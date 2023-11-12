@@ -4,7 +4,6 @@ import type { Server } from 'http';
 import express from 'express';
 import compression from 'compression';
 import isbot from 'isbot';
-import { LoggerProxy as Logger } from 'n8n-workflow';
 
 import config from '@/config';
 import { N8N_VERSION, inDevelopment, inTest } from '@/constants';
@@ -19,8 +18,11 @@ import { TestWebhooks } from '@/TestWebhooks';
 import { WaitingWebhooks } from '@/WaitingWebhooks';
 import { webhookRequestHandler } from '@/WebhookHelpers';
 import { generateHostInstanceId } from './databases/utils/generators';
+import { Logger } from '@/Logger';
 
 export abstract class AbstractServer {
+	protected logger: Logger;
+
 	protected server: Server;
 
 	readonly app: express.Application;
@@ -34,8 +36,6 @@ export abstract class AbstractServer {
 	protected sslKey: string;
 
 	protected sslCert: string;
-
-	protected timezone: string;
 
 	protected restEndpoint: string;
 
@@ -55,11 +55,12 @@ export abstract class AbstractServer {
 		this.app = express();
 		this.app.disable('x-powered-by');
 
+		const proxyHops = config.getEnv('proxy_hops');
+		if (proxyHops > 0) this.app.set('trust proxy', proxyHops);
+
 		this.protocol = config.getEnv('protocol');
 		this.sslKey = config.getEnv('ssl_key');
 		this.sslCert = config.getEnv('ssl_cert');
-
-		this.timezone = config.getEnv('generic.timezone');
 
 		this.restEndpoint = config.getEnv('endpoints.rest');
 		this.endpointWebhook = config.getEnv('endpoints.webhook');
@@ -67,6 +68,8 @@ export abstract class AbstractServer {
 		this.endpointWebhookWaiting = config.getEnv('endpoints.webhookWaiting');
 
 		this.uniqueInstanceId = generateHostInstanceId(instanceType);
+
+		this.logger = Container.get(Logger);
 	}
 
 	async configure(): Promise<void> {
@@ -194,7 +197,7 @@ export abstract class AbstractServer {
 		this.app.use((req, res, next) => {
 			const userAgent = req.headers['user-agent'];
 			if (userAgent && checkIfBot(userAgent)) {
-				Logger.info(`Blocked ${req.method} ${req.url} for "${userAgent}"`);
+				this.logger.info(`Blocked ${req.method} ${req.url} for "${userAgent}"`);
 				res.status(204).end();
 			} else next();
 		});

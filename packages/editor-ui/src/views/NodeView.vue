@@ -241,6 +241,7 @@ import { useUniqueNodeName } from '@/composables/useUniqueNodeName';
 import { useI18n } from '@/composables/useI18n';
 import { workflowHelpers } from '@/mixins/workflowHelpers';
 import { workflowRun } from '@/mixins/workflowRun';
+import { pinData } from '@/mixins/pinData';
 
 import NodeDetailsView from '@/components/NodeDetailsView.vue';
 import Node from '@/components/Node.vue';
@@ -265,6 +266,7 @@ import type {
 	IWorkflowBase,
 	Workflow,
 	ConnectionTypes,
+	INodeOutputConfiguration,
 } from 'n8n-workflow';
 import {
 	deepCopy,
@@ -366,6 +368,7 @@ export default defineComponent({
 		workflowHelpers,
 		workflowRun,
 		debounceHelper,
+		pinData,
 	],
 	components: {
 		NodeDetailsView,
@@ -456,7 +459,11 @@ export default defineComponent({
 		},
 	},
 	async beforeRouteLeave(to, from, next) {
-		if (getNodeViewTab(to) === MAIN_HEADER_TABS.EXECUTIONS || from.name === VIEWS.TEMPLATE_IMPORT) {
+		if (
+			getNodeViewTab(to) === MAIN_HEADER_TABS.EXECUTIONS ||
+			from.name === VIEWS.TEMPLATE_IMPORT ||
+			(getNodeViewTab(to) === MAIN_HEADER_TABS.WORKFLOW && from.name === VIEWS.EXECUTION_DEBUG)
+		) {
 			next();
 			return;
 		}
@@ -790,7 +797,16 @@ export default defineComponent({
 		},
 		async onSaveKeyboardShortcut(e: KeyboardEvent) {
 			let saved = await this.saveCurrentWorkflow();
-			if (saved) await this.settingsStore.fetchPromptsData();
+			if (saved) {
+				await this.settingsStore.fetchPromptsData();
+
+				if (this.$route.name === VIEWS.EXECUTION_DEBUG) {
+					await this.$router.replace({
+						name: VIEWS.WORKFLOW,
+						params: { name: this.currentWorkflow },
+					});
+				}
+			}
 			if (this.activeNode) {
 				// If NDV is open, save will not work from editable input fields
 				// so don't show success message if this is true
@@ -1674,6 +1690,8 @@ export default defineComponent({
 					});
 				}
 
+				this.removeUnknownCredentials(workflowData);
+
 				const currInstanceId = this.rootStore.instanceId;
 
 				const nodeGraph = JSON.stringify(
@@ -1718,10 +1736,6 @@ export default defineComponent({
 					});
 				});
 
-				if (workflowData.pinData) {
-					this.workflowsStore.setWorkflowPinData(workflowData.pinData);
-				}
-
 				const tagsEnabled = this.settingsStore.areTagsEnabled;
 				if (importTags && tagsEnabled && Array.isArray(workflowData.tags)) {
 					const allTags = await this.tagsStore.fetchAll();
@@ -1757,6 +1771,23 @@ export default defineComponent({
 				this.showError(error, this.$locale.baseText('nodeView.showError.importWorkflowData.title'));
 			}
 		},
+
+		removeUnknownCredentials(workflow: IWorkflowToShare) {
+			if (!workflow?.nodes) return;
+
+			for (const node of workflow.nodes) {
+				if (!node.credentials) continue;
+
+				for (const [name, credential] of Object.entries(node.credentials)) {
+					if (credential.id === null) continue;
+
+					if (!this.credentialsStore.getCredentialById(credential.id)) {
+						delete node.credentials[name];
+					}
+				}
+			}
+		},
+
 		onDragOver(event: DragEvent) {
 			event.preventDefault();
 		},
@@ -1970,29 +2001,51 @@ export default defineComponent({
 					this.canvasStore.newNodeInsertPosition = null;
 				} else {
 					let yOffset = 0;
+					const workflow = this.getCurrentWorkflow();
 
 					if (lastSelectedConnection) {
 						const sourceNodeType = this.nodeTypesStore.getNodeType(
 							lastSelectedNode.type,
 							lastSelectedNode.typeVersion,
 						);
-						const offsets = [
-							[-100, 100],
-							[-140, 0, 140],
-							[-240, -100, 100, 240],
-						];
-						if (sourceNodeType && sourceNodeType.outputs.length > 1) {
-							const offset = offsets[sourceNodeType.outputs.length - 2];
-							const sourceOutputIndex = lastSelectedConnection.__meta
-								? lastSelectedConnection.__meta.sourceOutputIndex
-								: 0;
-							yOffset = offset[sourceOutputIndex];
+
+						if (sourceNodeType) {
+							const offsets = [
+								[-100, 100],
+								[-140, 0, 140],
+								[-240, -100, 100, 240],
+							];
+
+							const sourceNodeOutputs = NodeHelpers.getNodeOutputs(
+								workflow,
+								lastSelectedNode,
+								sourceNodeType,
+							);
+							const sourceNodeOutputTypes = NodeHelpers.getConnectionTypes(sourceNodeOutputs);
+
+							const sourceNodeOutputMainOutputs = sourceNodeOutputTypes.filter(
+								(output) => output === NodeConnectionType.Main,
+							);
+
+							if (sourceNodeOutputMainOutputs.length > 1) {
+								const offset = offsets[sourceNodeOutputMainOutputs.length - 2];
+								const sourceOutputIndex = lastSelectedConnection.__meta
+									? lastSelectedConnection.__meta.sourceOutputIndex
+									: 0;
+								yOffset = offset[sourceOutputIndex];
+							}
 						}
 					}
 
-					const workflow = this.getCurrentWorkflow();
-					const workflowNode = workflow.getNode(newNodeData.name);
-					const outputs = NodeHelpers.getNodeOutputs(workflow, workflowNode!, nodeTypeData);
+					let outputs: Array<ConnectionTypes | INodeOutputConfiguration> = [];
+					try {
+						// It fails when the outputs are an expression. As those nodes have
+						// normally no outputs by default and the only reason we need the
+						// outputs here is to calculate the position, it is fine to assume
+						// that they have no outputs and are so treated as a regular node
+						// with only "main" outputs.
+						outputs = NodeHelpers.getNodeOutputs(workflow, newNodeData, nodeTypeData);
+					} catch (e) {}
 					const outputTypes = NodeHelpers.getConnectionTypes(outputs);
 					const lastSelectedNodeType = this.nodeTypesStore.getNodeType(
 						lastSelectedNode.type,
@@ -2000,7 +2053,10 @@ export default defineComponent({
 					);
 
 					// If node has only scoped outputs, position it below the last selected node
-					if (outputTypes.every((outputName) => outputName !== NodeConnectionType.Main)) {
+					if (
+						outputTypes.length > 0 &&
+						outputTypes.every((outputName) => outputName !== NodeConnectionType.Main)
+					) {
 						const lastSelectedNodeWorkflow = workflow.getNode(lastSelectedNode.name);
 						const lastSelectedInputs = NodeHelpers.getNodeInputs(
 							workflow,
@@ -2025,6 +2081,7 @@ export default defineComponent({
 							[100, 0],
 						);
 					} else {
+						// Has only main outputs or no outputs at all
 						const inputs = NodeHelpers.getNodeInputs(
 							workflow,
 							lastSelectedNode,
@@ -2548,7 +2605,9 @@ export default defineComponent({
 					);
 					if (sourceInfo.type !== NodeConnectionType.Main) {
 						// Not "main" connections get a different connection style
-						info.connection.setPaintStyle(getConnectorPaintStyleData(info.connection));
+						info.connection.setPaintStyle(
+							getConnectorPaintStyleData(info.connection, info.sourceEndpoint.parameters.category),
+						);
 						endpointArrow?.setVisible(false);
 					}
 				}
@@ -2582,6 +2641,7 @@ export default defineComponent({
 				}
 
 				if (
+					// eslint-disable-next-line no-constant-binary-expression
 					this.isReadOnlyRoute ??
 					this.readOnlyEnv ??
 					this.enterTimer ??
@@ -2615,6 +2675,7 @@ export default defineComponent({
 				}
 
 				if (
+					// eslint-disable-next-line no-constant-binary-expression
 					this.isReadOnlyRoute ??
 					this.readOnlyEnv ??
 					!connection ??
@@ -3008,6 +3069,9 @@ export default defineComponent({
 								{
 									workflow_id: workflow.id,
 								},
+								{
+									withPostHog: true,
+								},
 							);
 						}
 					}
@@ -3202,12 +3266,13 @@ export default defineComponent({
 
 				await this.addNodes([newNodeData], [], true);
 
-				const pinData = this.workflowsStore.pinDataByNodeName(nodeName);
-				if (pinData) {
-					this.workflowsStore.pinData({
-						node: newNodeData,
-						data: pinData,
-					});
+				const pinDataForNode = this.workflowsStore.pinDataByNodeName(nodeName);
+				if (pinDataForNode?.length) {
+					try {
+						this.setPinData(newNodeData, pinDataForNode, 'duplicate-node');
+					} catch (error) {
+						console.error(error);
+					}
 				}
 
 				this.uiStore.stateIsDirty = true;
@@ -3931,6 +3996,29 @@ export default defineComponent({
 				tempWorkflow.renameNode(oldName, nodeNameTable[oldName]);
 			}
 
+			if (data.pinData) {
+				let pinDataSuccess = true;
+				for (const nodeName of Object.keys(data.pinData)) {
+					// Pin data limit reached
+					if (!pinDataSuccess) {
+						this.showError(
+							new Error(this.$locale.baseText('ndv.pinData.error.tooLarge.description')),
+							this.$locale.baseText('ndv.pinData.error.tooLarge.title'),
+						);
+						continue;
+					}
+
+					const node = tempWorkflow.nodes[nodeNameTable[nodeName]];
+					try {
+						this.setPinData(node, data.pinData[nodeName], 'add-nodes');
+						pinDataSuccess = true;
+					} catch (error) {
+						pinDataSuccess = false;
+						console.error(error);
+					}
+				}
+			}
+
 			// Add the nodes with the changed node names, expressions and connections
 			this.historyStore.startRecordingUndo();
 			await this.addNodes(
@@ -4017,6 +4105,7 @@ export default defineComponent({
 
 			this.onToggleNodeCreator({ createNodeActive: false });
 			this.nodeCreatorStore.setShowScrim(false);
+			this.canvasStore.resetZoom();
 
 			// Reset nodes
 			this.unbindEndpointEventListeners();

@@ -4,8 +4,8 @@ import config from '@/config';
 import { flushPromises } from './Helpers';
 import { PostHogClient } from '@/posthog';
 import { mock } from 'jest-mock-extended';
-import { mockInstance } from '../integration/shared/utils';
 import { InstanceSettings } from 'n8n-core';
+import { mockInstance } from '../shared/mocking';
 
 jest.unmock('@/telemetry');
 jest.mock('@/license/License.service', () => {
@@ -55,7 +55,7 @@ describe('Telemetry', () => {
 		const postHog = new PostHogClient(instanceSettings);
 		await postHog.init();
 
-		telemetry = new Telemetry(postHog, mock(), instanceSettings);
+		telemetry = new Telemetry(mock(), postHog, mock(), instanceSettings);
 		(telemetry as any).rudderStack = mockRudderStack;
 	});
 

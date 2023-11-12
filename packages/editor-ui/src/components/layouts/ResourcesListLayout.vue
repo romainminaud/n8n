@@ -115,7 +115,7 @@
 					<div v-if="showFiltersDropdown" v-show="hasFilters" class="mt-xs">
 						<n8n-info-tip :bold="false">
 							{{ i18n.baseText(`${resourceKey}.filters.active`) }}
-							<n8n-link @click="resetFilters" size="small">
+							<n8n-link data-test-id="workflows-filter-reset" @click="resetFilters" size="small">
 								{{ i18n.baseText(`${resourceKey}.filters.active.reset`) }}
 							</n8n-link>
 						</n8n-info-tip>
@@ -215,8 +215,7 @@ import ResourceFiltersDropdown from '@/components/forms/ResourceFiltersDropdown.
 import { useSettingsStore } from '@/stores/settings.store';
 import { useUsersStore } from '@/stores/users.store';
 import { useFoldersStore } from '@/stores/folders.store';
-import type { N8nInput } from 'n8n-design-system';
-import type { DatatableColumn } from 'n8n-design-system';
+import type { N8nInput, DatatableColumn } from 'n8n-design-system';
 import { useI18n } from '@/composables';
 
 export interface IResource {
@@ -371,10 +370,7 @@ export default defineComponent({
 				if (this.filtersModel.sharedWith) {
 					matches =
 						matches &&
-						!!(
-							resource.sharedWith &&
-							resource.sharedWith.find((sharee) => sharee.id === this.filtersModel.sharedWith)
-						);
+						!!resource.sharedWith?.find((sharee) => sharee.id === this.filtersModel.sharedWith);
 				}
 
 				if (this.filtersModel.search) {
@@ -396,20 +392,20 @@ export default defineComponent({
 			return filtered.sort((a, b) => {
 				switch (this.sortBy) {
 					case 'lastUpdated':
-						return this.sortFns['lastUpdated']
-							? this.sortFns['lastUpdated'](a, b)
+						return this.sortFns.lastUpdated
+							? this.sortFns.lastUpdated(a, b)
 							: new Date(b.updatedAt).valueOf() - new Date(a.updatedAt).valueOf();
 					case 'lastCreated':
-						return this.sortFns['lastCreated']
-							? this.sortFns['lastCreated'](a, b)
+						return this.sortFns.lastCreated
+							? this.sortFns.lastCreated(a, b)
 							: new Date(b.createdAt).valueOf() - new Date(a.createdAt).valueOf();
 					case 'nameAsc':
-						return this.sortFns['nameAsc']
-							? this.sortFns['nameAsc'](a, b)
+						return this.sortFns.nameAsc
+							? this.sortFns.nameAsc(a, b)
 							: this.displayName(a).trim().localeCompare(this.displayName(b).trim());
 					case 'nameDesc':
-						return this.sortFns['nameDesc']
-							? this.sortFns['nameDesc'](a, b)
+						return this.sortFns.nameDesc
+							? this.sortFns.nameDesc(a, b)
 							: this.displayName(b).trim().localeCompare(this.displayName(a).trim());
 					default:
 						return this.sortFns[this.sortBy] ? this.sortFns[this.sortBy](a, b) : 0;
@@ -435,6 +431,19 @@ export default defineComponent({
 			this.loading = false;
 			await this.$nextTick();
 			this.focusSearchInput();
+
+			if (this.hasAppliedFilters()) {
+				this.hasFilters = true;
+			}
+		},
+		hasAppliedFilters(): boolean {
+			return !!this.filterKeys.find(
+				(key) =>
+					key !== 'search' &&
+					(Array.isArray(this.filters[key])
+						? this.filters[key].length > 0
+						: this.filters[key] !== ''),
+			);
 		},
 		setCurrentPage(page: number) {
 			this.currentPage = page;

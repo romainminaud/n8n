@@ -1,5 +1,4 @@
 import { v4 as uuid } from 'uuid';
-import * as Db from '@/Db';
 import { audit } from '@/audit';
 import {
 	DATABASE_REPORT,
@@ -9,11 +8,8 @@ import {
 import { getRiskSection, saveManualTriggerWorkflow } from './utils';
 import * as testDb from '../shared/testDb';
 import { generateNanoId } from '@db/utils/generators';
-
-import { LoggerProxy } from 'n8n-workflow';
-import { getLogger } from '@/Logger';
-
-LoggerProxy.init(getLogger());
+import { WorkflowRepository } from '@db/repositories/workflow.repository';
+import Container from 'typedi';
 
 beforeAll(async () => {
 	await testDb.init();
@@ -55,7 +51,7 @@ test('should report expressions in queries', async () => {
 			],
 		};
 
-		return Db.collections.Workflow.save(details);
+		return Container.get(WorkflowRepository).save(details);
 	});
 
 	await Promise.all(promises);
@@ -110,7 +106,7 @@ test('should report expressions in query params', async () => {
 			],
 		};
 
-		return Db.collections.Workflow.save(details);
+		return Container.get(WorkflowRepository).save(details);
 	});
 
 	await Promise.all(promises);
@@ -162,7 +158,7 @@ test('should report unused query params', async () => {
 			],
 		};
 
-		return Db.collections.Workflow.save(details);
+		return Container.get(WorkflowRepository).save(details);
 	});
 
 	await Promise.all(promises);

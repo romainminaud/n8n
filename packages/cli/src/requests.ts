@@ -26,9 +26,9 @@ import type { Role } from '@db/entities/Role';
 import type { User } from '@db/entities/User';
 import type { UserManagementMailer } from '@/UserManagement/email';
 import type { Variables } from '@db/entities/Variables';
-import type { WorkflowEntity } from './databases/entities/WorkflowEntity';
-import type { CredentialsEntity } from './databases/entities/CredentialsEntity';
-import type { WorkflowHistory } from './databases/entities/WorkflowHistory';
+import type { WorkflowEntity } from '@db/entities/WorkflowEntity';
+import type { CredentialsEntity } from '@db/entities/CredentialsEntity';
+import type { WorkflowHistory } from '@db/entities/WorkflowHistory';
 
 export class UserUpdatePayload implements Pick<User, 'email' | 'firstName' | 'lastName'> {
 	@IsEmail()
@@ -392,7 +392,7 @@ export declare namespace OAuthRequest {
 	}
 
 	namespace OAuth2Credential {
-		type Auth = OAuth1Credential.Auth;
+		type Auth = AuthenticatedRequest<{}, {}, {}, { id: string }>;
 		type Callback = AuthenticatedRequest<{}, {}, {}, { code: string; state: string }>;
 	}
 }

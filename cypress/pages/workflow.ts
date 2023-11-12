@@ -2,6 +2,7 @@ import { META_KEY } from '../constants';
 import { BasePage } from './base';
 import { getVisibleSelect } from '../utils';
 import { NodeCreator } from './features/node-creator';
+import Chainable = Cypress.Chainable;
 
 const nodeCreator = new NodeCreator();
 export class WorkflowPage extends BasePage {
@@ -46,8 +47,8 @@ export class WorkflowPage extends BasePage {
 		canvasNodePlusEndpointByName: (nodeName: string, index = 0) => {
 			return cy.get(this.getters.getEndpointSelector('plus', nodeName, index));
 		},
-		successToast: () => cy.get('.el-notification .el-notification--success').parent(),
-		errorToast: () => cy.get('.el-notification .el-notification--error'),
+		successToast: () => cy.get('.el-notification:has(.el-notification--success)'),
+		errorToast: () => cy.get('.el-notification:has(.el-notification--error)'),
 		activatorSwitch: () => cy.getByTestId('workflow-activate-switch'),
 		workflowMenu: () => cy.getByTestId('workflow-menu'),
 		firstStepButton: () => cy.getByTestId('canvas-add-button'),
@@ -124,6 +125,8 @@ export class WorkflowPage extends BasePage {
 		addStickyButton: () => cy.getByTestId('add-sticky-button'),
 		stickies: () => cy.getByTestId('sticky'),
 		editorTabButton: () => cy.getByTestId('radio-button-workflow'),
+		workflowHistoryButton: () => cy.getByTestId('workflow-history-button'),
+		colors: () => cy.getByTestId('color'),
 	};
 	actions = {
 		visit: (preventNodeViewUnload = true) => {
@@ -185,6 +188,9 @@ export class WorkflowPage extends BasePage {
 		openNode: (nodeTypeName: string) => {
 			this.getters.canvasNodeByName(nodeTypeName).first().dblclick();
 		},
+		duplicateNode: (node: Chainable<JQuery<HTMLElement>>) => {
+			node.find('[data-test-id="duplicate-node-button"]').click({ force: true });
+		},
 		openExpressionEditorModal: () => {
 			cy.contains('Expression').invoke('show').click();
 			cy.getByTestId('expander').invoke('show').click();
@@ -209,6 +215,7 @@ export class WorkflowPage extends BasePage {
 			this.getters.saveButton().should('contain', 'Save');
 			this.getters.saveButton().click();
 			this.getters.saveButton().should('contain', 'Saved');
+			cy.url().should('not.have.string', '/new');
 		},
 		saveWorkflowUsingKeyboardShortcut: () => {
 			cy.intercept('POST', '/rest/workflows').as('createWorkflow');
@@ -260,7 +267,8 @@ export class WorkflowPage extends BasePage {
 				ctrlKey: true,
 				pageX: cy.window().innerWidth / 2,
 				pageY: cy.window().innerHeight / 2,
-				deltaY: mode === 'zoomOut' ? 16 * steps : -16 * steps,
+				deltaMode: 1,
+				deltaY: mode === 'zoomOut' ? steps : -steps,
 			});
 		},
 		hitUndo: () => {
@@ -321,6 +329,17 @@ export class WorkflowPage extends BasePage {
 		deleteSticky: () => {
 			this.getters.stickies().eq(0).realHover().find('[data-test-id="delete-sticky"]').click();
 		},
+		toggleColorPalette: () => {
+			this.getters
+				.stickies()
+				.eq(0)
+				.realHover()
+				.find('[data-test-id="change-sticky-color"]')
+				.click({ force: true });
+		},
+		pickColor: (index: number) => {
+			this.getters.colors().eq(1).click();
+		},
 		editSticky: (content: string) => {
 			this.getters.stickies().dblclick().find('textarea').clear().type(content).type('{esc}');
 		},
@@ -333,6 +352,12 @@ export class WorkflowPage extends BasePage {
 			cy.get('#select-box').should('be.visible');
 			cy.getByTestId('node-view-wrapper').trigger('mouseup', to[0], to[1], { force: true });
 			cy.get('#select-box').should('not.be.visible');
+		},
+		getNodePosition: (node: Cypress.Chainable<JQuery<HTMLElement>>) => {
+			return node.then(($el) => ({
+				left: +$el[0].style.left.replace('px', ''),
+				top: +$el[0].style.top.replace('px', ''),
+			}));
 		},
 	};
 }

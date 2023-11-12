@@ -34,6 +34,7 @@ import { useSettingsStore } from '@/stores/settings.store';
 import { parse } from 'flatted';
 import { useSegment } from '@/stores/segment.store';
 import { defineComponent } from 'vue';
+import { useOrchestrationStore } from '@/stores/orchestration.store';
 
 export const pushConnection = defineComponent({
 	setup() {
@@ -61,6 +62,7 @@ export const pushConnection = defineComponent({
 			useWorkflowsStore,
 			useSettingsStore,
 			useSegment,
+			useOrchestrationStore,
 		),
 		sessionId(): string {
 			return this.rootStore.sessionId;
@@ -111,7 +113,10 @@ export const pushConnection = defineComponent({
 			this.connectRetries = 0;
 			this.lostConnection = false;
 			this.rootStore.pushConnectionActive = true;
-			this.clearAllStickyNotifications();
+			try {
+				// in the workers view context this fn is not defined
+				this.clearAllStickyNotifications();
+			} catch {}
 			this.pushSource?.removeEventListener('open', this.onConnectionSuccess);
 		},
 
@@ -194,6 +199,12 @@ export const pushConnection = defineComponent({
 				receivedData = JSON.parse(event.data);
 			} catch (error) {
 				return false;
+			}
+
+			if (receivedData.type === 'sendWorkerStatusMessage') {
+				const pushData = receivedData.data;
+				this.orchestrationManagerStore.updateWorkerStatus(pushData.status);
+				return true;
 			}
 
 			if (receivedData.type === 'sendConsoleMessage') {
@@ -284,7 +295,7 @@ export const pushConnection = defineComponent({
 				// The workflow finished executing
 				let pushData: IPushDataExecutionFinished;
 				if (receivedData.type === 'executionRecovered' && recoveredPushData !== undefined) {
-					pushData = recoveredPushData as IPushDataExecutionFinished;
+					pushData = recoveredPushData;
 				} else {
 					pushData = receivedData.data as IPushDataExecutionFinished;
 				}
@@ -329,12 +340,7 @@ export const pushConnection = defineComponent({
 					);
 				}
 
-				const lineNumber =
-					runDataExecuted &&
-					runDataExecuted.data &&
-					runDataExecuted.data.resultData &&
-					runDataExecuted.data.resultData.error &&
-					runDataExecuted.data.resultData.error.lineNumber;
+				const lineNumber = runDataExecuted?.data?.resultData?.error?.lineNumber;
 
 				codeNodeEditorEventBus.emit('error-line-number', lineNumber || 'final');
 
@@ -449,16 +455,13 @@ export const pushConnection = defineComponent({
 					this.titleSet(workflow.name as string, 'IDLE');
 
 					const execution = this.workflowsStore.getWorkflowExecution;
-					if (execution && execution.executedNode) {
+					if (execution?.executedNode) {
 						const node = this.workflowsStore.getNodeByName(execution.executedNode);
 						const nodeType = node && this.nodeTypesStore.getNodeType(node.type, node.typeVersion);
 						const nodeOutput =
 							execution &&
 							execution.executedNode &&
-							execution.data &&
-							execution.data.resultData &&
-							execution.data.resultData.runData &&
-							execution.data.resultData.runData[execution.executedNode];
+							execution.data?.resultData?.runData?.[execution.executedNode];
 						if (nodeType && nodeType.polling && !nodeOutput) {
 							this.showMessage({
 								title: this.$locale.baseText('pushConnection.pollingNode.dataNotFound', {
@@ -507,12 +510,11 @@ export const pushConnection = defineComponent({
 				let itemsCount = 0;
 				if (
 					lastNodeExecuted &&
-					runDataExecuted.data.resultData.runData[lastNodeExecuted as string] &&
+					runDataExecuted.data.resultData.runData[lastNodeExecuted] &&
 					!runDataExecutedErrorMessage
 				) {
 					itemsCount =
-						runDataExecuted.data.resultData.runData[lastNodeExecuted as string][0].data!.main[0]!
-							.length;
+						runDataExecuted.data.resultData.runData[lastNodeExecuted][0].data!.main[0]!.length;
 				}
 
 				void this.$externalHooks().run('pushConnection.executionFinished', {
@@ -596,7 +598,7 @@ export const pushConnection = defineComponent({
 					interpolate: { error: '!' },
 				});
 
-				if (error && error.message) {
+				if (error?.message) {
 					let nodeName: string | undefined;
 					if ('node' in error) {
 						nodeName = typeof error.node === 'string' ? error.node : error.node!.name;

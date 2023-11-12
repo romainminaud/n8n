@@ -1,14 +1,15 @@
 import { Service } from 'typedi';
 import { Response, NextFunction } from 'express';
-import { ILogger } from 'n8n-workflow';
 import { Get, Middleware, RestController } from '@/decorators';
 import type { WorkflowStatistics } from '@db/entities/WorkflowStatistics';
 import { StatisticsNames } from '@db/entities/WorkflowStatistics';
-import { SharedWorkflowRepository, WorkflowStatisticsRepository } from '@db/repositories';
+import { SharedWorkflowRepository } from '@db/repositories/sharedWorkflow.repository';
+import { WorkflowStatisticsRepository } from '@db/repositories/workflowStatistics.repository';
 import { ExecutionRequest } from '@/requests';
 import { whereClause } from '@/UserManagement/UserManagementHelper';
 import { NotFoundError } from '@/ResponseHelper';
 import type { IWorkflowStatisticsDataLoaded } from '@/Interfaces';
+import { Logger } from '@/Logger';
 
 interface WorkflowStatisticsData<T> {
 	productionSuccess: T;
@@ -23,7 +24,7 @@ export class WorkflowStatisticsController {
 	constructor(
 		private sharedWorkflowRepository: SharedWorkflowRepository,
 		private workflowStatisticsRepository: WorkflowStatisticsRepository,
-		private readonly logger: ILogger,
+		private readonly logger: Logger,
 	) {}
 
 	/**

@@ -6,7 +6,6 @@ import { jsonParse } from 'n8n-workflow';
 
 interface ReadOnlySettings {
 	encryptionKey: string;
-	instanceId: string;
 }
 
 interface WritableSettings {
@@ -17,10 +16,13 @@ type Settings = ReadOnlySettings & WritableSettings;
 
 @Service()
 export class InstanceSettings {
-	readonly userHome = this.getUserHome();
+	private readonly userHome = this.getUserHome();
 
 	/** The path to the n8n folder in which all n8n related data gets saved */
 	readonly n8nFolder = path.join(this.userHome, '.n8n');
+
+	/** The path to the folder where all generated static assets are copied to */
+	readonly staticCacheDir = path.join(this.userHome, '.cache/n8n/public');
 
 	/** The path to the folder containing custom nodes and credentials */
 	readonly customExtensionDir = path.join(this.n8nFolder, 'custom');
@@ -32,12 +34,10 @@ export class InstanceSettings {
 
 	private settings = this.loadOrCreate();
 
+	readonly instanceId = this.generateInstanceId();
+
 	get encryptionKey() {
 		return this.settings.encryptionKey;
-	}
-
-	get instanceId() {
-		return this.settings.instanceId;
 	}
 
 	get tunnelSubdomain() {
@@ -58,25 +58,32 @@ export class InstanceSettings {
 	}
 
 	private loadOrCreate(): Settings {
+		let settings: Settings;
 		const { settingsFile } = this;
 		if (existsSync(settingsFile)) {
 			const content = readFileSync(settingsFile, 'utf8');
-			return jsonParse(content, {
+			settings = jsonParse(content, {
 				errorMessage: `Error parsing n8n-config file "${settingsFile}". It does not seem to be valid JSON.`,
 			});
+		} else {
+			// Ensure that the `.n8n` folder exists
+			mkdirSync(this.n8nFolder, { recursive: true });
+			// If file doesn't exist, create new settings
+			const encryptionKey = process.env.N8N_ENCRYPTION_KEY ?? randomBytes(24).toString('base64');
+			settings = { encryptionKey };
+			this.save(settings);
+			// console.info(`UserSettings were generated and saved to: ${settingsFile}`);
 		}
 
-		// If file doesn't exist, create new settings
-		const encryptionKey = process.env.N8N_ENCRYPTION_KEY ?? randomBytes(24).toString('base64');
-		const instanceId = createHash('sha256')
+		const { encryptionKey, tunnelSubdomain } = settings;
+		return { encryptionKey, tunnelSubdomain };
+	}
+
+	private generateInstanceId() {
+		const { encryptionKey } = this;
+		return createHash('sha256')
 			.update(encryptionKey.slice(Math.round(encryptionKey.length / 2)))
 			.digest('hex');
-
-		const settings = { encryptionKey, instanceId };
-		mkdirSync(path.dirname(settingsFile));
-		this.save(settings);
-		console.log(`UserSettings were generated and saved to: ${settingsFile}`);
-		return settings;
 	}
 
 	private save(settings: Settings) {

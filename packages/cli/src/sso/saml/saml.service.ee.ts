@@ -1,8 +1,7 @@
 import type express from 'express';
-import { Service } from 'typedi';
-import * as Db from '@/Db';
+import Container, { Service } from 'typedi';
 import type { User } from '@db/entities/User';
-import { jsonParse, LoggerProxy } from 'n8n-workflow';
+import { jsonParse } from 'n8n-workflow';
 import { AuthError, BadRequestError } from '@/ResponseHelper';
 import { getServiceProviderInstance } from './serviceProvider.ee';
 import type { SamlUserAttributes } from './types/samlUserAttributes';
@@ -27,6 +26,9 @@ import https from 'https';
 import type { SamlLoginBinding } from './types';
 import { validateMetadata, validateResponse } from './samlValidator';
 import { getInstanceBaseUrl } from '@/UserManagement/UserManagementHelper';
+import { Logger } from '@/Logger';
+import { UserRepository } from '@db/repositories/user.repository';
+import { SettingsRepository } from '@db/repositories/settings.repository';
 
 @Service()
 export class SamlService {
@@ -70,6 +72,8 @@ export class SamlService {
 		};
 	}
 
+	constructor(private readonly logger: Logger) {}
+
 	async init(): Promise<void> {
 		// load preferences first but do not apply so as to not load samlify unnecessarily
 		await this.loadFromDbAndApplySamlPreferences(false);
@@ -81,7 +85,7 @@ export class SamlService {
 
 	async loadSamlify() {
 		if (this.samlify === undefined) {
-			LoggerProxy.debug('Loading samlify library into memory');
+			this.logger.debug('Loading samlify library into memory');
 			this.samlify = await import('samlify');
 		}
 		this.samlify.setSchemaValidator({
@@ -164,7 +168,7 @@ export class SamlService {
 		const attributes = await this.getAttributesFromLoginResponse(req, binding);
 		if (attributes.email) {
 			const lowerCasedEmail = attributes.email.toLowerCase();
-			const user = await Db.collections.User.findOne({
+			const user = await Container.get(UserRepository).findOne({
 				where: { email: lowerCasedEmail },
 				relations: ['globalRole', 'authIdentities'],
 			});
@@ -254,7 +258,7 @@ export class SamlService {
 	}
 
 	async loadFromDbAndApplySamlPreferences(apply = true): Promise<SamlPreferences | undefined> {
-		const samlPreferences = await Db.collections.Settings.findOne({
+		const samlPreferences = await Container.get(SettingsRepository).findOne({
 			where: { key: SAML_PREFERENCES_DB_KEY },
 		});
 		if (samlPreferences) {
@@ -272,16 +276,16 @@ export class SamlService {
 	}
 
 	async saveSamlPreferencesToDb(): Promise<SamlPreferences | undefined> {
-		const samlPreferences = await Db.collections.Settings.findOne({
+		const samlPreferences = await Container.get(SettingsRepository).findOne({
 			where: { key: SAML_PREFERENCES_DB_KEY },
 		});
 		const settingsValue = JSON.stringify(this.samlPreferences);
 		let result: Settings;
 		if (samlPreferences) {
 			samlPreferences.value = settingsValue;
-			result = await Db.collections.Settings.save(samlPreferences);
+			result = await Container.get(SettingsRepository).save(samlPreferences);
 		} else {
-			result = await Db.collections.Settings.save({
+			result = await Container.get(SettingsRepository).save({
 				key: SAML_PREFERENCES_DB_KEY,
 				value: settingsValue,
 				loadOnStartup: true,

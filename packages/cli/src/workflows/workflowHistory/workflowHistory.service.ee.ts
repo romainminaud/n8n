@@ -1,11 +1,12 @@
-import type { SharedWorkflow } from '@/databases/entities/SharedWorkflow';
-import type { User } from '@/databases/entities/User';
-import type { WorkflowEntity } from '@/databases/entities/WorkflowEntity';
-import type { WorkflowHistory } from '@/databases/entities/WorkflowHistory';
-import { SharedWorkflowRepository } from '@/databases/repositories';
+import type { SharedWorkflow } from '@db/entities/SharedWorkflow';
+import type { User } from '@db/entities/User';
+import type { WorkflowEntity } from '@db/entities/WorkflowEntity';
+import type { WorkflowHistory } from '@db/entities/WorkflowHistory';
+import { SharedWorkflowRepository } from '@db/repositories/sharedWorkflow.repository';
 import { WorkflowHistoryRepository } from '@db/repositories/workflowHistory.repository';
 import { Service } from 'typedi';
 import { isWorkflowHistoryEnabled } from './workflowHistoryHelper.ee';
+import { Logger } from '@/Logger';
 
 export class SharedWorkflowNotFoundError extends Error {}
 export class HistoryVersionNotFoundError extends Error {}
@@ -13,6 +14,7 @@ export class HistoryVersionNotFoundError extends Error {}
 @Service()
 export class WorkflowHistoryService {
 	constructor(
+		private readonly logger: Logger,
 		private readonly workflowHistoryRepository: WorkflowHistoryRepository,
 		private readonly sharedWorkflowRepository: SharedWorkflowRepository,
 	) {}
@@ -66,13 +68,20 @@ export class WorkflowHistoryService {
 
 	async saveVersion(user: User, workflow: WorkflowEntity, workflowId: string) {
 		if (isWorkflowHistoryEnabled()) {
-			await this.workflowHistoryRepository.insert({
-				authors: user.firstName + ' ' + user.lastName,
-				connections: workflow.connections,
-				nodes: workflow.nodes,
-				versionId: workflow.versionId,
-				workflowId,
-			});
+			try {
+				await this.workflowHistoryRepository.insert({
+					authors: user.firstName + ' ' + user.lastName,
+					connections: workflow.connections,
+					nodes: workflow.nodes,
+					versionId: workflow.versionId,
+					workflowId,
+				});
+			} catch (e) {
+				this.logger.error(
+					`Failed to save workflow history version for workflow ${workflowId}`,
+					e as Error,
+				);
+			}
 		}
 	}
 }

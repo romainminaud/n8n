@@ -13,7 +13,7 @@ import type {
 	INodeTypes,
 	IRun,
 } from 'n8n-workflow';
-import { Workflow, NodeOperationError, LoggerProxy, sleep } from 'n8n-workflow';
+import { Workflow, NodeOperationError, sleep } from 'n8n-workflow';
 
 import * as Db from '@/Db';
 import * as ResponseHelper from '@/ResponseHelper';
@@ -27,7 +27,8 @@ import { Queue } from '@/Queue';
 import { generateFailedExecutionFromError } from '@/WorkflowHelpers';
 import { N8N_VERSION } from '@/constants';
 import { BaseCommand } from './BaseCommand';
-import { ExecutionRepository } from '@db/repositories';
+import { ExecutionRepository } from '@db/repositories/execution.repository';
+import { WorkflowRepository } from '@db/repositories/workflow.repository';
 import { OwnershipService } from '@/services/ownership.service';
 import type { ICredentialsOverwrite } from '@/Interfaces';
 import { CredentialsOverwrites } from '@/CredentialsOverwrites';
@@ -71,7 +72,7 @@ export class Worker extends BaseCommand {
 	 * get removed.
 	 */
 	async stopProcess() {
-		LoggerProxy.info('Stopping n8n...');
+		this.logger.info('Stopping n8n...');
 
 		// Stop accepting new jobs
 		await Worker.jobQueue.pause(true);
@@ -94,7 +95,7 @@ export class Worker extends BaseCommand {
 			while (Object.keys(Worker.runningJobs).length !== 0) {
 				if (count++ % 4 === 0) {
 					const waitLeft = Math.ceil((stopTime - new Date().getTime()) / 1000);
-					LoggerProxy.info(
+					this.logger.info(
 						`Waiting for ${
 							Object.keys(Worker.runningJobs).length
 						} active executions to finish... (wait ${waitLeft} more seconds)`,
@@ -112,16 +113,14 @@ export class Worker extends BaseCommand {
 
 	async runJob(job: Job, nodeTypes: INodeTypes): Promise<JobResponse> {
 		const { executionId, loadStaticData } = job.data;
-		const fullExecutionData = await Container.get(ExecutionRepository).findSingleExecution(
-			executionId,
-			{
-				includeData: true,
-				unflattenData: true,
-			},
-		);
+		const executionRepository = Container.get(ExecutionRepository);
+		const fullExecutionData = await executionRepository.findSingleExecution(executionId, {
+			includeData: true,
+			unflattenData: true,
+		});
 
 		if (!fullExecutionData) {
-			LoggerProxy.error(
+			this.logger.error(
 				`Worker failed to find data of execution "${executionId}" in database. Cannot continue.`,
 				{ executionId },
 			);
@@ -130,22 +129,23 @@ export class Worker extends BaseCommand {
 			);
 		}
 		const workflowId = fullExecutionData.workflowData.id!;
-		LoggerProxy.info(
+		this.logger.info(
 			`Start job: ${job.id} (Workflow ID: ${workflowId} | Execution: ${executionId})`,
 		);
+		await executionRepository.updateStatus(executionId, 'running');
 
 		const workflowOwner = await Container.get(OwnershipService).getWorkflowOwnerCached(workflowId);
 
 		let { staticData } = fullExecutionData.workflowData;
 		if (loadStaticData) {
-			const workflowData = await Db.collections.Workflow.findOne({
+			const workflowData = await Container.get(WorkflowRepository).findOne({
 				select: ['id', 'staticData'],
 				where: {
 					id: workflowId,
 				},
 			});
 			if (workflowData === null) {
-				LoggerProxy.error(
+				this.logger.error(
 					'Worker execution failed because workflow could not be found in database.',
 					{ workflowId, executionId },
 				);
@@ -217,7 +217,7 @@ export class Worker extends BaseCommand {
 
 		additionalData.setExecutionStatus = (status: ExecutionStatus) => {
 			// Can't set the status directly in the queued worker, but it will happen in InternalHook.onWorkflowPostExecute
-			LoggerProxy.debug(`Queued worker execution status for ${executionId} is "${status}"`);
+			this.logger.debug(`Queued worker execution status for ${executionId} is "${status}"`);
 		};
 
 		let workflowExecute: WorkflowExecute;
@@ -400,7 +400,7 @@ export class Worker extends BaseCommand {
 			'/healthz',
 
 			async (req: express.Request, res: express.Response) => {
-				LoggerProxy.debug('Health check started!');
+				this.logger.debug('Health check started!');
 
 				const connection = Db.getConnection();
 
@@ -412,7 +412,7 @@ export class Worker extends BaseCommand {
 					// DB ping
 					await connection.query('SELECT 1');
 				} catch (e) {
-					LoggerProxy.error('No Database connection!', e as Error);
+					this.logger.error('No Database connection!', e as Error);
 					const error = new ResponseHelper.ServiceUnavailableError('No Database connection!');
 					return ResponseHelper.sendErrorResponse(res, error);
 				}
@@ -423,7 +423,7 @@ export class Worker extends BaseCommand {
 					// Redis ping
 					await Worker.jobQueue.ping();
 				} catch (e) {
-					LoggerProxy.error('No Redis connection!', e as Error);
+					this.logger.error('No Redis connection!', e as Error);
 					const error = new ResponseHelper.ServiceUnavailableError('No Redis connection!');
 					return ResponseHelper.sendErrorResponse(res, error);
 				}
@@ -433,7 +433,7 @@ export class Worker extends BaseCommand {
 					status: 'ok',
 				};
 
-				LoggerProxy.debug('Health check completed successfully!');
+				this.logger.debug('Health check completed successfully!');
 
 				ResponseHelper.sendSuccessResponse(res, responseData, true, 200);
 			},

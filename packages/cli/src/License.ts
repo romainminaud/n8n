@@ -1,9 +1,9 @@
 import type { TEntitlement, TFeatures, TLicenseBlock } from '@n8n_io/license-sdk';
 import { LicenseManager } from '@n8n_io/license-sdk';
-import type { ILogger } from 'n8n-workflow';
-import { getLogger } from './Logger';
+import { InstanceSettings, ObjectStoreService } from 'n8n-core';
+import Container, { Service } from 'typedi';
+import { Logger } from '@/Logger';
 import config from '@/config';
-import * as Db from '@/Db';
 import {
 	LICENSE_FEATURES,
 	LICENSE_QUOTAS,
@@ -11,11 +11,11 @@ import {
 	SETTINGS_LICENSE_CERT_KEY,
 	UNLIMITED_LICENSE_QUOTA,
 } from './constants';
-import Container, { Service } from 'typedi';
+import { SettingsRepository } from '@db/repositories/settings.repository';
+import { WorkflowRepository } from '@db/repositories/workflow.repository';
 import type { BooleanLicenseFeature, N8nInstanceType, NumericLicenseFeature } from './Interfaces';
 import type { RedisServicePubSubPublisher } from './services/redis/RedisServicePubSubPublisher';
 import { RedisService } from './services/redis.service';
-import { InstanceSettings, ObjectStoreService } from 'n8n-core';
 
 type FeatureReturnType = Partial<
 	{
@@ -23,17 +23,26 @@ type FeatureReturnType = Partial<
 	} & { [K in NumericLicenseFeature]: number } & { [K in BooleanLicenseFeature]: boolean }
 >;
 
+export class FeatureNotLicensedError extends Error {
+	constructor(feature: (typeof LICENSE_FEATURES)[keyof typeof LICENSE_FEATURES]) {
+		super(
+			`Your license does not allow for ${feature}. To enable ${feature}, please upgrade to a license that supports this feature.`,
+		);
+	}
+}
+
 @Service()
 export class License {
-	private logger: ILogger;
-
 	private manager: LicenseManager | undefined;
 
 	private redisPublisher: RedisServicePubSubPublisher;
 
-	constructor(private readonly instanceSettings: InstanceSettings) {
-		this.logger = getLogger();
-	}
+	constructor(
+		private readonly logger: Logger,
+		private readonly instanceSettings: InstanceSettings,
+		private readonly settingsRepository: SettingsRepository,
+		private readonly workflowRepository: WorkflowRepository,
+	) {}
 
 	async init(instanceType: N8nInstanceType = 'main') {
 		if (this.manager) {
@@ -51,6 +60,9 @@ export class License {
 		const onFeatureChange = isMainInstance
 			? async (features: TFeatures) => this.onFeatureChange(features)
 			: async () => {};
+		const collectUsageMetrics = isMainInstance
+			? async () => this.collectUsageMetrics()
+			: async () => [];
 
 		try {
 			this.manager = new LicenseManager({
@@ -65,6 +77,7 @@ export class License {
 				loadCertStr: async () => this.loadCertStr(),
 				saveCertStr,
 				deviceFingerprint: () => this.instanceSettings.instanceId,
+				collectUsageMetrics,
 				onFeatureChange,
 			});
 
@@ -76,13 +89,22 @@ export class License {
 		}
 	}
 
+	async collectUsageMetrics() {
+		return [
+			{
+				name: 'activeWorkflows',
+				value: await this.workflowRepository.count({ where: { active: true } }),
+			},
+		];
+	}
+
 	async loadCertStr(): Promise<TLicenseBlock> {
 		// if we have an ephemeral license, we don't want to load it from the database
 		const ephemeralLicense = config.get('license.cert');
 		if (ephemeralLicense) {
 			return ephemeralLicense;
 		}
-		const databaseSettings = await Db.collections.Settings.findOne({
+		const databaseSettings = await this.settingsRepository.findOne({
 			where: {
 				key: SETTINGS_LICENSE_CERT_KEY,
 			},
@@ -93,6 +115,21 @@ export class License {
 
 	async onFeatureChange(_features: TFeatures): Promise<void> {
 		if (config.getEnv('executions.mode') === 'queue') {
+			if (config.getEnv('leaderSelection.enabled')) {
+				const { MultiMainInstancePublisher } = await import(
+					'@/services/orchestration/main/MultiMainInstance.publisher.ee'
+				);
+
+				const multiMainInstancePublisher = Container.get(MultiMainInstancePublisher);
+
+				await multiMainInstancePublisher.init();
+
+				if (multiMainInstancePublisher.isFollower) {
+					this.logger.debug('Instance is follower, skipping sending of reloadLicense command...');
+					return;
+				}
+			}
+
 			if (!this.redisPublisher) {
 				this.logger.debug('Initializing Redis publisher for License Service');
 				this.redisPublisher = await Container.get(RedisService).getPubSubPublisher();
@@ -118,7 +155,7 @@ export class License {
 	async saveCertStr(value: TLicenseBlock): Promise<void> {
 		// if we have an ephemeral license, we don't want to save it to the database
 		if (config.get('license.cert')) return;
-		await Db.collections.Settings.upsert(
+		await this.settingsRepository.upsert(
 			{
 				key: SETTINGS_LICENSE_CERT_KEY,
 				value,
@@ -192,6 +229,10 @@ export class License {
 		return this.isFeatureEnabled(LICENSE_FEATURES.BINARY_DATA_S3);
 	}
 
+	isMultipleMainInstancesLicensed() {
+		return this.isFeatureEnabled(LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES);
+	}
+
 	isVariablesEnabled() {
 		return this.isFeatureEnabled(LICENSE_FEATURES.VARIABLES);
 	}
@@ -210,6 +251,10 @@ export class License {
 
 	isAPIDisabled() {
 		return this.isFeatureEnabled(LICENSE_FEATURES.API_DISABLED);
+	}
+
+	isWorkerViewLicensed() {
+		return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
 	}
 
 	getCurrentEntitlements() {

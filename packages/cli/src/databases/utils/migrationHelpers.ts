@@ -8,10 +8,8 @@ import config from '@/config';
 import { inTest } from '@/constants';
 import type { BaseMigration, Migration, MigrationContext, MigrationFn } from '@db/types';
 import { createSchemaBuilder } from '@db/dsl';
-import { getLogger } from '@/Logger';
 import { NodeTypes } from '@/NodeTypes';
-
-const logger = getLogger();
+import { Logger } from '@/Logger';
 
 const PERSONALIZATION_SURVEY_FILENAME = 'personalizationSurvey.json';
 
@@ -48,18 +46,20 @@ let runningMigrations = false;
 function logMigrationStart(migrationName: string): void {
 	if (inTest) return;
 
+	const logger = Container.get(Logger);
 	if (!runningMigrations) {
 		logger.warn('Migrations in progress, please do NOT stop the process.');
 		runningMigrations = true;
 	}
 
-	logger.debug(`Starting migration ${migrationName}`);
+	logger.info(`Starting migration ${migrationName}`);
 }
 
 function logMigrationEnd(migrationName: string): void {
 	if (inTest) return;
 
-	logger.debug(`Finished migration ${migrationName}`);
+	const logger = Container.get(Logger);
+	logger.info(`Finished migration ${migrationName}`);
 }
 
 const runDisablingForeignKeys = async (
@@ -94,7 +94,7 @@ const dbName = config.getEnv(`database.${dbType === 'mariadb' ? 'mysqldb' : dbTy
 const tablePrefix = config.getEnv('database.tablePrefix');
 
 const createContext = (queryRunner: QueryRunner, migration: Migration): MigrationContext => ({
-	logger,
+	logger: Container.get(Logger),
 	tablePrefix,
 	dbType,
 	isMysql,

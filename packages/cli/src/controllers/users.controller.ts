@@ -1,7 +1,7 @@
 import validator from 'validator';
 import type { FindManyOptions } from 'typeorm';
 import { In, Not } from 'typeorm';
-import { ILogger, ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
+import { ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
 import { User } from '@db/entities/User';
 import { SharedCredentials } from '@db/entities/SharedCredentials';
 import { SharedWorkflow } from '@db/entities/SharedWorkflow';
@@ -29,7 +29,8 @@ import type { PublicUser, ITelemetryUserDeletionData } from '@/Interfaces';
 import { AuthIdentity } from '@db/entities/AuthIdentity';
 import { PostHogClient } from '@/posthog';
 import { isSamlLicensedAndEnabled } from '../sso/saml/samlHelpers';
-import { SharedCredentialsRepository, SharedWorkflowRepository } from '@db/repositories';
+import { SharedCredentialsRepository } from '@db/repositories/sharedCredentials.repository';
+import { SharedWorkflowRepository } from '@db/repositories/sharedWorkflow.repository';
 import { plainToInstance } from 'class-transformer';
 import { License } from '@/License';
 import { Container } from 'typedi';
@@ -38,13 +39,14 @@ import { JwtService } from '@/services/jwt.service';
 import { RoleService } from '@/services/role.service';
 import { UserService } from '@/services/user.service';
 import { listQueryMiddleware } from '@/middlewares';
+import { Logger } from '@/Logger';
 
 @Authorized(['global', 'owner'])
 @RestController('/users')
 export class UsersController {
 	constructor(
 		private readonly config: Config,
-		private readonly logger: ILogger,
+		private readonly logger: Logger,
 		private readonly externalHooks: IExternalHooksClass,
 		private readonly internalHooks: IInternalHooksClass,
 		private readonly sharedCredentialsRepository: SharedCredentialsRepository,
@@ -410,23 +412,8 @@ export class UsersController {
 			throw new NotFoundError('User not found');
 		}
 
-		const resetPasswordToken = this.jwtService.signData(
-			{ sub: user.id },
-			{
-				expiresIn: '1d',
-			},
-		);
-
-		const baseUrl = getInstanceBaseUrl();
-
-		const link = this.userService.generatePasswordResetUrl(
-			baseUrl,
-			resetPasswordToken,
-			user.mfaEnabled,
-		);
-		return {
-			link,
-		};
+		const link = this.userService.generatePasswordResetUrl(user);
+		return { link };
 	}
 
 	@Authorized(['global', 'owner'])

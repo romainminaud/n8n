@@ -16,8 +16,8 @@ Cypress.Commands.add('createFixtureWorkflow', (fixtureKey, workflowName) => {
 
 	cy.waitForLoad(false);
 	workflowPage.actions.setWorkflowName(workflowName);
-
 	workflowPage.getters.saveButton().should('contain', 'Saved');
+	workflowPage.actions.zoomToFit();
 });
 
 Cypress.Commands.add(
@@ -33,7 +33,7 @@ Cypress.Commands.add('waitForLoad', (waitForIntercepts = true) => {
 	// we can't set them up here because at this point it would be too late
 	// and the requests would already have been made
 	if (waitForIntercepts) {
-		cy.wait(['@loadSettings']);
+		cy.wait(['@loadSettings', '@loadNodeTypes']);
 	}
 	cy.getByTestId('node-view-loader', { timeout: 20000 }).should('not.exist');
 	cy.get('.el-loading-mask', { timeout: 20000 }).should('not.exist');
@@ -66,8 +66,15 @@ const setFeature = (feature: string, enabled: boolean) =>
 		enabled,
 	});
 
+const setQueueMode = (enabled: boolean) =>
+	cy.request('PATCH', `${BACKEND_BASE_URL}/rest/e2e/queue-mode`, {
+		enabled,
+	});
+
 Cypress.Commands.add('enableFeature', (feature: string) => setFeature(feature, true));
-Cypress.Commands.add('disableFeature', (feature): string => setFeature(feature, false));
+Cypress.Commands.add('disableFeature', (feature: string) => setFeature(feature, false));
+Cypress.Commands.add('enableQueueMode', () => setQueueMode(true));
+Cypress.Commands.add('disableQueueMode', () => setQueueMode(false));
 
 Cypress.Commands.add('grantBrowserPermissions', (...permissions: string[]) => {
 	if (Cypress.isBrowser('chrome')) {
@@ -160,4 +167,11 @@ Cypress.Commands.add('draganddrop', (draggableSelector, droppableSelector) => {
 				cy.get(draggableSelector).realMouseUp();
 			}
 		});
+});
+
+Cypress.Commands.add('shouldNotHaveConsoleErrors', () => {
+	cy.window().then((win) => {
+		const spy = cy.spy(win.console, 'error');
+		cy.wrap(spy).should('not.have.been.called');
+	});
 });

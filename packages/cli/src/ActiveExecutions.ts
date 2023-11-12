@@ -7,7 +7,7 @@ import type {
 	IRun,
 	ExecutionStatus,
 } from 'n8n-workflow';
-import { createDeferredPromise, LoggerProxy } from 'n8n-workflow';
+import { WorkflowOperationError, createDeferredPromise } from 'n8n-workflow';
 
 import type { ChildProcess } from 'child_process';
 import type PCancelable from 'p-cancelable';
@@ -19,13 +19,16 @@ import type {
 	IWorkflowExecutionDataProcess,
 } from '@/Interfaces';
 import { isWorkflowIdValid } from '@/utils';
-import { ExecutionRepository } from '@db/repositories';
+import { ExecutionRepository } from '@db/repositories/execution.repository';
+import { Logger } from '@/Logger';
 
 @Service()
 export class ActiveExecutions {
 	private activeExecutions: {
 		[index: string]: IExecutingWorkflowData;
 	} = {};
+
+	constructor(private readonly logger: Logger) {}
 
 	/**
 	 * Add a new active execution
@@ -167,7 +170,6 @@ export class ActiveExecutions {
 				setTimeout(() => {
 					// execute on next event loop tick;
 					this.activeExecutions[executionId].process!.send({
-						// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
 						type: timeout || 'stopExecution',
 					});
 				}, 1);
@@ -187,12 +189,12 @@ export class ActiveExecutions {
 	 * @param {string} executionId The id of the execution to wait for
 	 */
 	async getPostExecutePromise(executionId: string): Promise<IRun | undefined> {
+		if (this.activeExecutions[executionId] === undefined) {
+			throw new WorkflowOperationError(`There is no active execution with id "${executionId}".`);
+		}
+
 		// Create the promise which will be resolved when the execution finished
 		const waitPromise = await createDeferredPromise<IRun | undefined>();
-
-		if (this.activeExecutions[executionId] === undefined) {
-			throw new Error(`There is no active execution with id "${executionId}".`);
-		}
 
 		this.activeExecutions[executionId].postExecutePromises.push(waitPromise);
 
@@ -225,7 +227,7 @@ export class ActiveExecutions {
 
 	async setStatus(executionId: string, status: ExecutionStatus): Promise<void> {
 		if (this.activeExecutions[executionId] === undefined) {
-			LoggerProxy.debug(
+			this.logger.debug(
 				`There is no active execution with id "${executionId}", can't update status to ${status}.`,
 			);
 			return;

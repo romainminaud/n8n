@@ -108,6 +108,7 @@
 			>
 				<n8n-icon-button
 					:disabled="isWorkflowHistoryButtonDisabled"
+					data-test-id="workflow-history-button"
 					type="tertiary"
 					icon="history"
 					size="medium"
@@ -349,9 +350,8 @@ export default defineComponent({
 			return actions;
 		},
 		isWorkflowHistoryFeatureEnabled(): boolean {
-			return (
-				this.settingsStore.isEnterpriseFeatureEnabled(EnterpriseEditionFeature.WorkflowHistory) &&
-				this.settingsStore.isDevRelease
+			return this.settingsStore.isEnterpriseFeatureEnabled(
+				EnterpriseEditionFeature.WorkflowHistory,
 			);
 		},
 		workflowHistoryRoute(): { name: string; params: { workflowId: string } } {
@@ -379,7 +379,17 @@ export default defineComponent({
 				name: this.workflowName,
 				tags: this.currentWorkflowTagIds,
 			});
-			if (saved) await this.settingsStore.fetchPromptsData();
+
+			if (saved) {
+				await this.settingsStore.fetchPromptsData();
+
+				if (this.$route.name === VIEWS.EXECUTION_DEBUG) {
+					await this.$router.replace({
+						name: VIEWS.WORKFLOW,
+						params: { name: this.currentWorkflowId },
+					});
+				}
+			}
 		},
 		onShareButtonClick() {
 			this.uiStore.openModalWithData({

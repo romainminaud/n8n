@@ -1,17 +1,11 @@
 import { Container } from 'typedi';
 import type { IDataObject, INode, IPinData } from 'n8n-workflow';
-import {
-	NodeApiError,
-	ErrorReporterProxy as ErrorReporter,
-	LoggerProxy,
-	Workflow,
-} from 'n8n-workflow';
+import { NodeApiError, ErrorReporterProxy as ErrorReporter, Workflow } from 'n8n-workflow';
 import type { FindManyOptions, FindOptionsSelect, FindOptionsWhere, UpdateResult } from 'typeorm';
 import { In, Like } from 'typeorm';
 import pick from 'lodash/pick';
 import { v4 as uuid } from 'uuid';
 import { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
-import * as Db from '@/Db';
 import * as ResponseHelper from '@/ResponseHelper';
 import * as WorkflowHelpers from '@/WorkflowHelpers';
 import config from '@/config';
@@ -29,13 +23,16 @@ import * as WorkflowExecuteAdditionalData from '@/WorkflowExecuteAdditionalData'
 import { TestWebhooks } from '@/TestWebhooks';
 import { whereClause } from '@/UserManagement/UserManagementHelper';
 import { InternalHooks } from '@/InternalHooks';
-import { WorkflowRepository } from '@/databases/repositories';
+import { WorkflowRepository } from '@db/repositories/workflow.repository';
 import { RoleService } from '@/services/role.service';
 import { OwnershipService } from '@/services/ownership.service';
 import { isStringArray, isWorkflowIdValid } from '@/utils';
-import { isWorkflowHistoryLicensed } from './workflowHistory/workflowHistoryHelper.ee';
 import { WorkflowHistoryService } from './workflowHistory/workflowHistory.service.ee';
 import { BinaryDataService } from 'n8n-core';
+import { Logger } from '@/Logger';
+import { SharedWorkflowRepository } from '@db/repositories/sharedWorkflow.repository';
+import { WorkflowTagMappingRepository } from '@db/repositories/workflowTagMapping.repository';
+import { ExecutionRepository } from '@db/repositories/execution.repository';
 
 export class WorkflowsService {
 	static async getSharing(
@@ -53,7 +50,7 @@ export class WorkflowsService {
 			where.userId = user.id;
 		}
 
-		return Db.collections.SharedWorkflow.findOne({ where, relations });
+		return Container.get(SharedWorkflowRepository).findOne({ where, relations });
 	}
 
 	/**
@@ -99,7 +96,10 @@ export class WorkflowsService {
 	}
 
 	static async get(workflow: FindOptionsWhere<WorkflowEntity>, options?: { relations: string[] }) {
-		return Db.collections.Workflow.findOne({ where: workflow, relations: options?.relations });
+		return Container.get(WorkflowRepository).findOne({
+			where: workflow,
+			relations: options?.relations,
+		});
 	}
 
 	static async getMany(sharedWorkflowIds: string[], options?: ListQuery.Options) {
@@ -193,7 +193,7 @@ export class WorkflowsService {
 		forceSave?: boolean,
 		roles?: string[],
 	): Promise<WorkflowEntity> {
-		const shared = await Db.collections.SharedWorkflow.findOne({
+		const shared = await Container.get(SharedWorkflowRepository).findOne({
 			relations: ['workflow', 'role'],
 			where: whereClause({
 				user,
@@ -203,8 +203,9 @@ export class WorkflowsService {
 			}),
 		});
 
+		const logger = Container.get(Logger);
 		if (!shared) {
-			LoggerProxy.verbose('User attempted to update a workflow without permissions', {
+			logger.verbose('User attempted to update a workflow without permissions', {
 				workflowId,
 				userId: user.id,
 			});
@@ -224,17 +225,23 @@ export class WorkflowsService {
 			);
 		}
 
+		let onlyActiveUpdate = false;
+
 		if (
-			Object.keys(workflow).length === 3 &&
-			workflow.id !== undefined &&
-			workflow.versionId !== undefined &&
-			workflow.active !== undefined
+			(Object.keys(workflow).length === 3 &&
+				workflow.id !== undefined &&
+				workflow.versionId !== undefined &&
+				workflow.active !== undefined) ||
+			(Object.keys(workflow).length === 2 &&
+				workflow.versionId !== undefined &&
+				workflow.active !== undefined)
 		) {
 			// we're just updating the active status of the workflow, don't update the versionId
+			onlyActiveUpdate = true;
 		} else {
 			// Update the workflow's version
 			workflow.versionId = uuid();
-			LoggerProxy.verbose(
+			logger.verbose(
 				`Updating versionId for workflow ${workflowId} for user ${user.id} after saving`,
 				{
 					previousVersionId: shared.workflow.versionId,
@@ -282,7 +289,7 @@ export class WorkflowsService {
 			await validateEntity(workflow);
 		}
 
-		await Db.collections.Workflow.update(
+		await Container.get(WorkflowRepository).update(
 			workflowId,
 			pick(workflow, [
 				'name',
@@ -298,13 +305,13 @@ export class WorkflowsService {
 		);
 
 		if (tagIds && !config.getEnv('workflowTagsDisabled')) {
-			await Db.collections.WorkflowTagMapping.delete({ workflowId });
-			await Db.collections.WorkflowTagMapping.insert(
+			await Container.get(WorkflowTagMappingRepository).delete({ workflowId });
+			await Container.get(WorkflowTagMappingRepository).insert(
 				tagIds.map((tagId) => ({ tagId, workflowId })),
 			);
 		}
 
-		if (isWorkflowHistoryLicensed() && workflow.versionId !== shared.workflow.versionId) {
+		if (!onlyActiveUpdate && workflow.versionId !== shared.workflow.versionId) {
 			await Container.get(WorkflowHistoryService).saveVersion(user, workflow, workflowId);
 		}
 
@@ -312,7 +319,7 @@ export class WorkflowsService {
 
 		// We sadly get nothing back from "update". Neither if it updated a record
 		// nor the new value. So query now the hopefully updated entry.
-		const updatedWorkflow = await Db.collections.Workflow.findOne({
+		const updatedWorkflow = await Container.get(WorkflowRepository).findOne({
 			where: { id: workflowId },
 			relations,
 		});
@@ -343,7 +350,7 @@ export class WorkflowsService {
 			} catch (error) {
 				// If workflow could not be activated set it again to inactive
 				// and revert the versionId change so UI remains consistent
-				await Db.collections.Workflow.update(workflowId, {
+				await Container.get(WorkflowRepository).update(workflowId, {
 					active: false,
 					versionId: shared.workflow.versionId,
 				});
@@ -448,7 +455,7 @@ export class WorkflowsService {
 	static async delete(user: User, workflowId: string): Promise<WorkflowEntity | undefined> {
 		await Container.get(ExternalHooks).run('workflow.delete', [workflowId]);
 
-		const sharedWorkflow = await Db.collections.SharedWorkflow.findOne({
+		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			relations: ['workflow', 'role'],
 			where: whereClause({
 				user,
@@ -467,12 +474,14 @@ export class WorkflowsService {
 			await Container.get(ActiveWorkflowRunner).remove(workflowId);
 		}
 
-		const idsForDeletion = await Db.collections.Execution.find({
-			select: ['id'],
-			where: { workflowId },
-		}).then((rows) => rows.map(({ id: executionId }) => ({ workflowId, executionId })));
+		const idsForDeletion = await Container.get(ExecutionRepository)
+			.find({
+				select: ['id'],
+				where: { workflowId },
+			})
+			.then((rows) => rows.map(({ id: executionId }) => ({ workflowId, executionId })));
 
-		await Db.collections.Workflow.delete(workflowId);
+		await Container.get(WorkflowRepository).delete(workflowId);
 		await Container.get(BinaryDataService).deleteMany(idsForDeletion);
 
 		void Container.get(InternalHooks).onWorkflowDeleted(user, workflowId, false);
@@ -482,7 +491,7 @@ export class WorkflowsService {
 	}
 
 	static async updateWorkflowTriggerCount(id: string, triggerCount: number): Promise<UpdateResult> {
-		const qb = Db.collections.Workflow.createQueryBuilder('workflow');
+		const qb = Container.get(WorkflowRepository).createQueryBuilder('workflow');
 		return qb
 			.update()
 			.set({
@@ -507,12 +516,11 @@ export class WorkflowsService {
 			if (isWorkflowIdValid(workflow.id)) {
 				// Workflow is saved so update in database
 				try {
-					// eslint-disable-next-line @typescript-eslint/no-use-before-define
 					await WorkflowsService.saveStaticDataById(workflow.id, workflow.staticData);
 					workflow.staticData.__dataChanged = false;
 				} catch (error) {
 					ErrorReporter.error(error);
-					LoggerProxy.error(
+					Container.get(Logger).error(
 						// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 						`There was a problem saving the workflow with id "${workflow.id}" to save changed staticData: "${error.message}"`,
 						{ workflowId: workflow.id },
@@ -529,7 +537,7 @@ export class WorkflowsService {
 	 * @param {IDataObject} newStaticData The static data to save
 	 */
 	static async saveStaticDataById(workflowId: string, newStaticData: IDataObject): Promise<void> {
-		await Db.collections.Workflow.update(workflowId, {
+		await Container.get(WorkflowRepository).update(workflowId, {
 			staticData: newStaticData,
 		});
 	}

@@ -17,7 +17,7 @@ import type {
 	INodeTypeData,
 	ICredentialTypeData,
 } from 'n8n-workflow';
-import { LoggerProxy, ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
+import { ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
 
 import config from '@/config';
 import {
@@ -27,6 +27,7 @@ import {
 	CLI_DIR,
 	inE2ETests,
 } from '@/constants';
+import { Logger } from '@/Logger';
 
 interface LoadedNodesAndCredentials {
 	nodes: INodeTypeData;
@@ -49,7 +50,10 @@ export class LoadNodesAndCredentials {
 
 	private postProcessors: Array<() => Promise<void>> = [];
 
-	constructor(private readonly instanceSettings: InstanceSettings) {}
+	constructor(
+		private readonly logger: Logger,
+		private readonly instanceSettings: InstanceSettings,
+	) {}
 
 	async init() {
 		if (inTest) throw new Error('Not available in tests');
@@ -197,7 +201,7 @@ export class LoadNodesAndCredentials {
 		return description.credentials.some(({ name }) => {
 			const credType = this.types.credentials.find((t) => t.name === name);
 			if (!credType) {
-				LoggerProxy.warn(
+				this.logger.warn(
 					`Failed to load Custom API options for the node "${description.name}": Unknown credential name "${name}"`,
 				);
 				return false;
@@ -312,7 +316,7 @@ export class LoadNodesAndCredentials {
 		const { default: debounce } = await import('lodash/debounce');
 		// eslint-disable-next-line import/no-extraneous-dependencies
 		const { watch } = await import('chokidar');
-		// eslint-disable-next-line @typescript-eslint/naming-convention
+
 		const { Push } = await import('@/push');
 		const push = Container.get(Push);
 
@@ -336,7 +340,7 @@ export class LoadNodesAndCredentials {
 				loader.reset();
 				await loader.loadAll();
 				await this.postProcessLoaders();
-				push.send('nodeDescriptionUpdated', undefined);
+				push.broadcast('nodeDescriptionUpdated');
 			}, 100);
 
 			const toWatch = loader.isLazyLoaded

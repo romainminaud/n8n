@@ -12,14 +12,13 @@ import type {
 } from 'n8n-workflow';
 import { InstanceSettings } from 'n8n-core';
 
-import { GENERATED_STATIC_DIR, LICENSE_FEATURES } from '@/constants';
+import { LICENSE_FEATURES } from '@/constants';
 import { CredentialsOverwrites } from '@/CredentialsOverwrites';
 import { CredentialTypes } from '@/CredentialTypes';
 import { LoadNodesAndCredentials } from '@/LoadNodesAndCredentials';
 import { License } from '@/License';
 import { getInstanceBaseUrl } from '@/UserManagement/UserManagementHelper';
 import * as WebhookHelpers from '@/WebhookHelpers';
-import { LoggerProxy } from 'n8n-workflow';
 import config from '@/config';
 import { getCurrentAuthenticationMethod } from '@/sso/ssoHelpers';
 import { getLdapLoginLabel } from '@/Ldap/helpers';
@@ -31,6 +30,7 @@ import {
 } from '@/workflows/workflowHistory/workflowHistoryHelper.ee';
 import { UserManagementMailer } from '@/UserManagement/email';
 import type { CommunityPackagesService } from '@/services/communityPackages.service';
+import { Logger } from '@/Logger';
 
 @Service()
 export class FrontendService {
@@ -39,6 +39,7 @@ export class FrontendService {
 	private communityPackagesService?: CommunityPackagesService;
 
 	constructor(
+		private readonly logger: Logger,
 		private readonly loadNodesAndCredentials: LoadNodesAndCredentials,
 		private readonly credentialTypes: CredentialTypes,
 		private readonly credentialsOverwrites: CredentialsOverwrites,
@@ -46,6 +47,9 @@ export class FrontendService {
 		private readonly mailer: UserManagementMailer,
 		private readonly instanceSettings: InstanceSettings,
 	) {
+		loadNodesAndCredentials.addPostProcessor(async () => this.generateTypes());
+		void this.generateTypes();
+
 		this.initSettings();
 
 		if (config.getEnv('nodes.communityPackages.enabled')) {
@@ -69,7 +73,7 @@ export class FrontendService {
 			const [key, url] = conf.split(';');
 
 			if (!key || !url) {
-				LoggerProxy.warn('Diagnostics frontend config is invalid');
+				this.logger.warn('Diagnostics frontend config is invalid');
 				telemetrySettings.enabled = false;
 			}
 
@@ -171,6 +175,7 @@ export class FrontendService {
 				debugInEditor: false,
 				binaryDataS3: false,
 				workflowHistory: false,
+				workerView: false,
 			},
 			mfa: {
 				enabled: false,
@@ -201,8 +206,9 @@ export class FrontendService {
 	async generateTypes() {
 		this.overwriteCredentialsProperties();
 
+		const { staticCacheDir } = this.instanceSettings;
 		// pre-render all the node and credential types as static json files
-		await mkdir(path.join(GENERATED_STATIC_DIR, 'types'), { recursive: true });
+		await mkdir(path.join(staticCacheDir, 'types'), { recursive: true });
 		const { credentials, nodes } = this.loadNodesAndCredentials.types;
 		this.writeStaticJSON('nodes', nodes);
 		this.writeStaticJSON('credentials', credentials);
@@ -258,6 +264,7 @@ export class FrontendService {
 			binaryDataS3: isS3Available && isS3Selected && isS3Licensed,
 			workflowHistory:
 				this.license.isWorkflowHistoryLicensed() && config.getEnv('workflowHistory.enabled'),
+			workerView: this.license.isWorkerViewLicensed(),
 		});
 
 		if (this.license.isLdapEnabled()) {
@@ -291,6 +298,8 @@ export class FrontendService {
 
 		this.settings.mfa.enabled = config.get('mfa.enabled');
 
+		this.settings.executionMode = config.getEnv('executions.mode');
+
 		return this.settings;
 	}
 
@@ -299,7 +308,8 @@ export class FrontendService {
 	}
 
 	private writeStaticJSON(name: string, data: INodeTypeBaseDescription[] | ICredentialType[]) {
-		const filePath = path.join(GENERATED_STATIC_DIR, `types/${name}.json`);
+		const { staticCacheDir } = this.instanceSettings;
+		const filePath = path.join(staticCacheDir, `types/${name}.json`);
 		const stream = createWriteStream(filePath, 'utf-8');
 		stream.write('[\n');
 		data.forEach((entry, index) => {

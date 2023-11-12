@@ -4,7 +4,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable id-denylist */
 /* eslint-disable prefer-spread */
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 import type express from 'express';
@@ -39,7 +38,6 @@ import {
 	createDeferredPromise,
 	ErrorReporterProxy as ErrorReporter,
 	FORM_TRIGGER_PATH_IDENTIFIER,
-	LoggerProxy as Logger,
 	NodeHelpers,
 } from 'n8n-workflow';
 
@@ -64,6 +62,7 @@ import { EventsService } from '@/services/events.service';
 import { OwnershipService } from './services/ownership.service';
 import { parseBody } from './middlewares';
 import { WorkflowsService } from './workflows/workflows.services';
+import { Logger } from './Logger';
 
 const pipeline = promisify(stream.pipeline);
 
@@ -246,7 +245,6 @@ export async function executeWebhook(
 		workflowStartNode,
 		webhookData.webhookDescription.responseMode,
 		executionMode,
-		additionalData.timezone,
 		additionalKeys,
 		undefined,
 		'onReceived',
@@ -255,7 +253,6 @@ export async function executeWebhook(
 		workflowStartNode,
 		webhookData.webhookDescription.responseCode,
 		executionMode,
-		additionalData.timezone,
 		additionalKeys,
 		undefined,
 		200,
@@ -265,7 +262,6 @@ export async function executeWebhook(
 		workflowStartNode,
 		webhookData.webhookDescription.responseData,
 		executionMode,
-		additionalData.timezone,
 		additionalKeys,
 		undefined,
 		'firstEntryJson',
@@ -288,7 +284,6 @@ export async function executeWebhook(
 		workflowStartNode,
 		'={{$parameter["options"]["binaryData"]}}',
 		executionMode,
-		additionalData.timezone,
 		additionalKeys,
 		undefined,
 		false,
@@ -370,7 +365,6 @@ export async function executeWebhook(
 				workflowStartNode,
 				webhookData.webhookDescription.responseHeaders,
 				executionMode,
-				additionalData.timezone,
 				additionalKeys,
 				undefined,
 				undefined,
@@ -534,7 +528,7 @@ export async function executeWebhook(
 				})
 				.catch(async (error) => {
 					ErrorReporter.error(error);
-					Logger.error(
+					Container.get(Logger).error(
 						`Error with Webhook-Response for execution "${executionId}": "${error.message}"`,
 						{ executionId, workflowId: workflow.id },
 					);
@@ -551,7 +545,7 @@ export async function executeWebhook(
 			responsePromise,
 		);
 
-		Logger.verbose(
+		Container.get(Logger).verbose(
 			`Started execution of workflow "${workflow.name}" from webhook with execution ID ${executionId}`,
 			{ executionId },
 		);
@@ -644,7 +638,6 @@ export async function executeWebhook(
 								workflowStartNode,
 								webhookData.webhookDescription.responsePropertyName,
 								executionMode,
-								additionalData.timezone,
 								additionalKeys,
 								undefined,
 								undefined,
@@ -658,7 +651,6 @@ export async function executeWebhook(
 								workflowStartNode,
 								webhookData.webhookDescription.responseContentType,
 								executionMode,
-								additionalData.timezone,
 								additionalKeys,
 								undefined,
 								undefined,
@@ -704,7 +696,6 @@ export async function executeWebhook(
 								workflowStartNode,
 								webhookData.webhookDescription.responseBinaryPropertyName,
 								executionMode,
-								additionalData.timezone,
 								additionalKeys,
 								undefined,
 								'data',

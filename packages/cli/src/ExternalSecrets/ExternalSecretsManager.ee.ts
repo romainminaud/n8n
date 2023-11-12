@@ -1,4 +1,4 @@
-import { SettingsRepository } from '@/databases/repositories';
+import { SettingsRepository } from '@db/repositories/settings.repository';
 import type {
 	ExternalSecretsSettings,
 	SecretsProvider,
@@ -8,7 +8,7 @@ import type {
 import { Cipher } from 'n8n-core';
 import Container, { Service } from 'typedi';
 
-import { getLogger } from '@/Logger';
+import { Logger } from '@/Logger';
 
 import { jsonParse, type IDataObject } from 'n8n-workflow';
 import {
@@ -19,9 +19,7 @@ import {
 import { License } from '@/License';
 import { InternalHooks } from '@/InternalHooks';
 import { ExternalSecretsProviders } from './ExternalSecretsProviders.ee';
-import { OrchestrationMainService } from '@/services/orchestration/main/orchestration.main.service';
-
-const logger = getLogger();
+import { SingleMainInstancePublisher } from '@/services/orchestration/main/SingleMainInstance.publisher';
 
 @Service()
 export class ExternalSecretsManager {
@@ -38,10 +36,11 @@ export class ExternalSecretsManager {
 	initRetryTimeouts: Record<string, NodeJS.Timer> = {};
 
 	constructor(
-		private settingsRepo: SettingsRepository,
-		private license: License,
-		private secretsProviders: ExternalSecretsProviders,
-		private cipher: Cipher,
+		private readonly logger: Logger,
+		private readonly settingsRepo: SettingsRepository,
+		private readonly license: License,
+		private readonly secretsProviders: ExternalSecretsProviders,
+		private readonly cipher: Cipher,
 	) {}
 
 	async init(): Promise<void> {
@@ -72,7 +71,7 @@ export class ExternalSecretsManager {
 	}
 
 	async reloadAllProviders(backoff?: number) {
-		logger.debug('Reloading all external secrets providers');
+		this.logger.debug('Reloading all external secrets providers');
 		const providers = this.getProviderNames();
 		if (!providers) {
 			return;
@@ -83,7 +82,7 @@ export class ExternalSecretsManager {
 	}
 
 	async broadcastReloadExternalSecretsProviders() {
-		await Container.get(OrchestrationMainService).broadcastReloadExternalSecretsProviders();
+		await Container.get(SingleMainInstancePublisher).broadcastReloadExternalSecretsProviders();
 	}
 
 	private decryptSecretsSettings(value: string): ExternalSecretsSettings {
@@ -140,7 +139,7 @@ export class ExternalSecretsManager {
 		try {
 			await provider.init(providerSettings);
 		} catch (e) {
-			logger.error(
+			this.logger.error(
 				`Error initializing secrets provider ${provider.displayName} (${provider.name}).`,
 			);
 			this.retryInitWithBackoff(name, currentBackoff);
@@ -155,7 +154,7 @@ export class ExternalSecretsManager {
 			try {
 				await provider.disconnect();
 			} catch {}
-			logger.error(
+			this.logger.error(
 				`Error initializing secrets provider ${provider.displayName} (${provider.name}).`,
 			);
 			this.retryInitWithBackoff(name, currentBackoff);
@@ -190,7 +189,7 @@ export class ExternalSecretsManager {
 						await p.update();
 					}
 				} catch {
-					logger.error(`Error updating secrets provider ${p.displayName} (${p.name}).`);
+					this.logger.error(`Error updating secrets provider ${p.displayName} (${p.name}).`);
 				}
 			}),
 		);

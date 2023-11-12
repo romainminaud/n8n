@@ -1,9 +1,12 @@
 import type { NodeCreatorOpenSource } from './Interface';
 import { NodeConnectionType } from 'n8n-workflow';
 
-export const MAX_WORKFLOW_SIZE = 16777216; // Workflow size limit in bytes
-export const MAX_WORKFLOW_PINNED_DATA_SIZE = 12582912; // Workflow pinned data size limit in bytes
-export const MAX_DISPLAY_DATA_SIZE = 204800;
+export const MAX_WORKFLOW_SIZE = 1024 * 1024 * 16; // Workflow size limit in bytes
+export const MAX_EXPECTED_REQUEST_SIZE = 2048; // Expected maximum workflow request metadata (i.e. headers) size in bytes
+export const MAX_PINNED_DATA_SIZE = import.meta.env.VUE_APP_MAX_PINNED_DATA_SIZE
+	? parseInt(import.meta.env.VUE_APP_MAX_PINNED_DATA_SIZE, 10)
+	: 1024 * 1024 * 12; // Workflow pinned data size limit in bytes
+export const MAX_DISPLAY_DATA_SIZE = 1024 * 200;
 export const MAX_DISPLAY_ITEMS_AUTO_ALL = 250;
 
 export const PLACEHOLDER_FILLED_AT_EXECUTION_TIME = '[filled at execution time]';
@@ -155,6 +158,7 @@ export const WOOCOMMERCE_TRIGGER_NODE_TYPE = 'n8n-nodes-base.wooCommerceTrigger'
 export const XERO_NODE_TYPE = 'n8n-nodes-base.xero';
 export const ZENDESK_NODE_TYPE = 'n8n-nodes-base.zendesk';
 export const ZENDESK_TRIGGER_NODE_TYPE = 'n8n-nodes-base.zendeskTrigger';
+export const DISCORD_NODE_TYPE = 'n8n-nodes-base.discord';
 
 export const EXECUTABLE_TRIGGER_NODE_TYPES = [
 	START_NODE_TYPE,
@@ -222,9 +226,8 @@ export const REQUEST_NODE_FORM_URL = 'https://n8n-community.typeform.com/to/K1fB
 
 // Node Connection Types
 export const NODE_CONNECTION_TYPE_ALLOW_MULTIPLE: NodeConnectionType[] = [
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 	NodeConnectionType.AiTool,
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+
 	NodeConnectionType.Main,
 ];
 
@@ -429,6 +432,7 @@ export const enum VIEWS {
 	AUDIT_LOGS = 'AuditLogs',
 	MFA_VIEW = 'MfaView',
 	WORKFLOW_HISTORY = 'WorkflowHistory',
+	WORKER_VIEW = 'WorkerView',
 }
 
 export const enum FAKE_DOOR_FEATURES {
@@ -501,6 +505,7 @@ export const enum EnterpriseEditionFeature {
 	AuditLogs = 'auditLogs',
 	DebugInEditor = 'debugInEditor',
 	WorkflowHistory = 'workflowHistory',
+	WorkerView = 'workerView',
 }
 export const MAIN_NODE_PANEL_WIDTH = 360;
 
@@ -578,6 +583,7 @@ export const KEEP_AUTH_IN_NDV_FOR_NODES = [
 	HTTP_REQUEST_NODE_TYPE,
 	WEBHOOK_NODE_TYPE,
 	WAIT_NODE_TYPE,
+	DISCORD_NODE_TYPE,
 ];
 export const MAIN_AUTH_FIELD_NAME = 'authentication';
 export const NODE_RESOURCE_FIELD_NAME = 'resource';
@@ -599,7 +605,7 @@ export const MFA_AUTHENTICATION_TOKEN_INPUT_MAX_LENGTH = 6;
 
 export const MFA_AUTHENTICATION_RECOVERY_CODE_INPUT_MAX_LENGTH = 36;
 
-export const NODE_TYPES_EXCLUDED_FROM_OUTPUT_NAME_APPEND = [FILTER_NODE_TYPE];
+export const NODE_TYPES_EXCLUDED_FROM_OUTPUT_NAME_APPEND = [FILTER_NODE_TYPE, SWITCH_NODE_TYPE];
 
 export const ALLOWED_HTML_ATTRIBUTES = ['href', 'name', 'target', 'title', 'class', 'id', 'style'];
 

@@ -136,12 +136,17 @@
 					color="text-base"
 					class="mb-3xs"
 				/>
-				<n8n-select :modelValue="filters.status" @update:modelValue="setKeyValue('status', $event)">
+				<n8n-select
+					data-test-id="status-dropdown"
+					:modelValue="filters.status"
+					@update:modelValue="setKeyValue('status', $event)"
+				>
 					<n8n-option
 						v-for="option in statusFilterOptions"
 						:key="option.label"
 						:label="option.label"
 						:value="option.value"
+						data-test-id="status"
 					>
 					</n8n-option>
 				</n8n-select>
@@ -167,6 +172,7 @@ import { useCredentialsStore } from '@/stores/credentials.store';
 import { useFoldersStore } from '@/stores/folders.store';
 import { useSourceControlStore } from '@/stores/sourceControl.store';
 import { genericHelpers } from '@/mixins/genericHelpers';
+import { useTagsStore } from '@/stores';
 
 type IResourcesListLayoutInstance = InstanceType<typeof ResourcesListLayout>;
 
@@ -196,7 +202,7 @@ const WorkflowsView = defineComponent({
 				ownedBy: '',
 				sharedWith: '',
 				folder: '',
-				status: StatusFilter.ALL,
+				status: StatusFilter.ALL as string | boolean,
 				tags: [] as string[],
 			},
 			sourceControlStoreUnsubscribe: () => {},
@@ -211,6 +217,7 @@ const WorkflowsView = defineComponent({
 			useFoldersStore,
 			useCredentialsStore,
 			useSourceControlStore,
+			useTagsStore,
 		),
 		currentUser(): IUser {
 			return this.usersStore.currentUser || ({} as IUser);
@@ -275,6 +282,8 @@ const WorkflowsView = defineComponent({
 			filters: { tags: string[]; search: string; status: string | boolean },
 			matches: boolean,
 		): boolean {
+			this.saveFiltersOnQueryString();
+
 			if (this.settingsStore.areTagsEnabled && filters.tags.length > 0) {
 				matches =
 					matches &&
@@ -300,6 +309,77 @@ const WorkflowsView = defineComponent({
 		},
 		sendFiltersTelemetry(source: string) {
 			(this.$refs.layout as IResourcesListLayoutInstance).sendFiltersTelemetry(source);
+		},
+		saveFiltersOnQueryString() {
+			const query: { [key: string]: string } = {};
+
+			if (this.filters.search) {
+				query.search = this.filters.search;
+			}
+
+			if (typeof this.filters.status !== 'string') {
+				query.status = this.filters.status.toString();
+			}
+
+			if (this.filters.tags.length) {
+				query.tags = this.filters.tags.join(',');
+			}
+
+			if (this.filters.ownedBy) {
+				query.ownedBy = this.filters.ownedBy;
+			}
+
+			if (this.filters.sharedWith) {
+				query.sharedWith = this.filters.sharedWith;
+			}
+
+			void this.$router.replace({
+				name: VIEWS.WORKFLOWS,
+				query,
+			});
+		},
+		isValidUserId(userId: string) {
+			return Object.keys(this.usersStore.users).includes(userId);
+		},
+		setFiltersFromQueryString() {
+			const { tags, status, search, ownedBy, sharedWith } = this.$route.query;
+
+			const filtersToApply: { [key: string]: string | string[] | boolean } = {};
+
+			if (ownedBy && typeof ownedBy === 'string' && this.isValidUserId(ownedBy)) {
+				filtersToApply.ownedBy = ownedBy;
+			}
+
+			if (sharedWith && typeof sharedWith === 'string' && this.isValidUserId(sharedWith)) {
+				filtersToApply.sharedWith = sharedWith;
+			}
+
+			if (search && typeof search === 'string') {
+				filtersToApply.search = search;
+			}
+
+			if (tags && typeof tags === 'string') {
+				const currentTags = this.tagsStore.allTags.map((tag) => tag.id);
+				const savedTags = tags.split(',').filter((tag) => currentTags.includes(tag));
+				if (savedTags.length) {
+					filtersToApply.tags = savedTags;
+				}
+			}
+
+			if (
+				status &&
+				typeof status === 'string' &&
+				[StatusFilter.ACTIVE.toString(), StatusFilter.DEACTIVATED.toString()].includes(status)
+			) {
+				filtersToApply.status = status === 'true';
+			}
+
+			if (Object.keys(filtersToApply).length) {
+				this.filters = {
+					...this.filters,
+					...filtersToApply,
+				};
+			}
 		},
 		async onUpdateIsInFolder(folder: string) {
 			if (folder === 'no-folder') {
@@ -333,6 +413,8 @@ const WorkflowsView = defineComponent({
 		},
 	},
 	mounted() {
+		this.setFiltersFromQueryString();
+
 		void this.usersStore.showPersonalizationSurvey();
 
 		this.sourceControlStoreUnsubscribe = this.sourceControlStore.$onAction(({ name, after }) => {

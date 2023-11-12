@@ -20,7 +20,7 @@ import type {
 import { UserManagementAuthenticationMethod } from '@/Interface';
 import type {
 	IDataObject,
-	ILogLevel,
+	LogLevel,
 	IN8nUISettings,
 	ITelemetrySettings,
 	WorkflowSettings,
@@ -31,9 +31,13 @@ import { useUIStore } from './ui.store';
 import { useUsersStore } from './users.store';
 import { useVersionsStore } from './versions.store';
 import { makeRestApiRequest } from '@/utils';
+import { useTitleChange, useToast } from '@/composables';
+import { ExpressionEvaluatorProxy } from 'n8n-workflow';
+import { i18n } from '@/plugins/i18n';
 
 export const useSettingsStore = defineStore(STORES.SETTINGS, {
 	state: (): ISettingsState => ({
+		initialized: false,
 		settings: {} as IN8nUISettings,
 		promptsData: {} as IN8nPrompts,
 		userManagement: {
@@ -69,7 +73,7 @@ export const useSettingsStore = defineStore(STORES.SETTINGS, {
 	}),
 	getters: {
 		isEnterpriseFeatureEnabled() {
-			return (feature: EnterpriseEditionFeature): boolean => this.settings.enterprise[feature];
+			return (feature: EnterpriseEditionFeature): boolean => this.settings.enterprise?.[feature];
 		},
 		versionCli(): string {
 			return this.settings.versionCli;
@@ -129,7 +133,7 @@ export const useSettingsStore = defineStore(STORES.SETTINGS, {
 		telemetry(): ITelemetrySettings {
 			return this.settings.telemetry;
 		},
-		logLevel(): ILogLevel {
+		logLevel(): LogLevel {
 			return this.settings.logLevel;
 		},
 		isTelemetryEnabled(): boolean {
@@ -170,6 +174,9 @@ export const useSettingsStore = defineStore(STORES.SETTINGS, {
 		isQueueModeEnabled(): boolean {
 			return this.settings.executionMode === 'queue';
 		},
+		isWorkerViewAvailable(): boolean {
+			return !!this.settings.enterprise?.workerView;
+		},
 		workflowCallerPolicyDefaultOption(): WorkflowSettings.CallerPolicy {
 			return this.settings.workflowCallerPolicyDefaultOption;
 		},
@@ -190,6 +197,33 @@ export const useSettingsStore = defineStore(STORES.SETTINGS, {
 		},
 	},
 	actions: {
+		async initialize() {
+			if (this.initialized) {
+				return;
+			}
+
+			const { showToast } = useToast();
+			try {
+				await this.getSettings();
+
+				ExpressionEvaluatorProxy.setEvaluator(this.settings.expressions.evaluator);
+
+				// Re-compute title since settings are now available
+				useTitleChange().titleReset();
+
+				this.initialized = true;
+			} catch (e) {
+				showToast({
+					title: i18n.baseText('startupError'),
+					message: i18n.baseText('startupError.message'),
+					type: 'error',
+					duration: 0,
+					dangerouslyUseHTMLString: true,
+				});
+
+				throw e;
+			}
+		},
 		setSettings(settings: IN8nUISettings): void {
 			this.settings = settings;
 			this.userManagement = settings.userManagement;

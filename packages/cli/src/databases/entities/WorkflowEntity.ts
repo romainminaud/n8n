@@ -100,6 +100,10 @@ export class WorkflowEntity extends WithTimestampsAndStringId implements IWorkfl
 	@Column({ default: 0 })
 	triggerCount: number;
 
+	display() {
+		return `"${this.name}" (ID: ${this.id})`;
+	}
+
 	@ManyToOne('FolderEntity')
 	folder: FolderEntity;
 }
