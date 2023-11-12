@@ -68,6 +68,7 @@ import type {
 import { registerController } from '@/decorators';
 import { AuthController } from '@/controllers/auth.controller';
 import { BinaryDataController } from '@/controllers/binaryData.controller';
+import { FoldersController } from '@/controllers/folders.controller';
 import { LdapController } from '@/controllers/ldap.controller';
 import { MeController } from '@/controllers/me.controller';
 import { MFAController } from '@/controllers/mfa.controller';

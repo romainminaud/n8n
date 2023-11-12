@@ -1,4 +1,4 @@
-import { FolderRepository } from '@/databases/repositories';
+import { FolderRepository } from '@/databases/repositories/folder.repository';
 import { Service } from 'typedi';
 import { validateEntity } from '@/GenericHelpers';
 import type { IFolderWithCountDb } from '@/Interfaces';
