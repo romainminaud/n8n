@@ -746,6 +746,7 @@
 	"menuActions.importFromUrl": "Import from URL...",
 	"menuActions.importFromFile": "Import from File...",
 	"menuActions.delete": "Delete",
+	"menuActions.credentialsReplace": "Replace credentials",
 	"multipleParameter.addItem": "Add item",
 	"multipleParameter.currentlyNoItemsExist": "Currently no items exist",
 	"multipleParameter.deleteItem": "Delete item",
@@ -2359,5 +2360,10 @@
 	"templateSetup.skip": "Skip",
 	"templateSetup.continue.button": "Continue",
 	"templateSetup.credential.description": "The credential you select will be used in the {0} node of the workflow template. | The credential you select will be used in the {0} nodes of the workflow template.",
-	"templateSetup.continue.button.fillRemaining": "Fill remaining credentials to continue"
+	"templateSetup.continue.button.fillRemaining": "Fill remaining credentials to continue",
+	"credentialsReplace.title": "Replace Credentials",
+	"credentialsReplace.currentCredential": "Current Credential",
+	"credentialsReplace.targetCredential": "Target Credential",
+	"credentialsReplace.save": "Replace",
+	"credentialsReplace.showMessage.title": "{replacedCredentials} credentials replaced."
 }

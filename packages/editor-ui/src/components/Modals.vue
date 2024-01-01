@@ -162,6 +162,10 @@
 				/>
 			</template>
 		</ModalRoot>
+
+		<ModalRoot :name="WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY">
+			<CredentialsReplace />
+		</ModalRoot>
 	</div>
 </template>
 
@@ -197,6 +201,7 @@ import {
 	MFA_SETUP_MODAL_KEY,
 	WORKFLOW_HISTORY_VERSION_RESTORE,
 	SUGGESTED_TEMPLATES_PREVIEW_MODAL_KEY,
+	WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY,
 } from '@/constants';
 
 import AboutModal from './AboutModal.vue';
@@ -229,6 +234,7 @@ import ExternalSecretsProviderModal from '@/components/ExternalSecretsProviderMo
 import DebugPaywallModal from '@/components/DebugPaywallModal.vue';
 import WorkflowHistoryVersionRestoreModal from '@/components/WorkflowHistory/WorkflowHistoryVersionRestoreModal.vue';
 import SuggestedTemplatesPreviewModal from '@/components/SuggestedTemplates/SuggestedTemplatesPreviewModal.vue';
+import CredentialsReplace from './CredentialsReplace.vue';
 
 export default defineComponent({
 	name: 'Modals',
@@ -263,6 +269,7 @@ export default defineComponent({
 		MfaSetupModal,
 		WorkflowHistoryVersionRestoreModal,
 		SuggestedTemplatesPreviewModal,
+		CredentialsReplace,
 	},
 	data: () => ({
 		CHAT_EMBED_MODAL_KEY,
@@ -294,6 +301,7 @@ export default defineComponent({
 		MFA_SETUP_MODAL_KEY,
 		WORKFLOW_HISTORY_VERSION_RESTORE,
 		SUGGESTED_TEMPLATES_PREVIEW_MODAL_KEY,
+		WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY,
 	}),
 });
 </script>

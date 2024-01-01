@@ -152,6 +152,7 @@ import {
 	WORKFLOW_MENU_ACTIONS,
 	WORKFLOW_SETTINGS_MODAL_KEY,
 	WORKFLOW_SHARE_MODAL_KEY,
+	WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY,
 } from '@/constants';
 
 import ShortenName from '@/components/ShortenName.vue';
@@ -323,6 +324,11 @@ export default defineComponent({
 					{
 						id: WORKFLOW_MENU_ACTIONS.IMPORT_FROM_FILE,
 						label: this.$locale.baseText('menuActions.importFromFile'),
+						disabled: !this.onWorkflowPage || this.onExecutionsTab,
+					},
+					{
+						id: WORKFLOW_MENU_ACTIONS.CREDENTIALS_REPLACE,
+						label: this.$locale.baseText('menuActions.credentialsReplace'),
 						disabled: !this.onWorkflowPage || this.onExecutionsTab,
 					},
 				);
@@ -617,6 +623,10 @@ export default defineComponent({
 				}
 				case WORKFLOW_MENU_ACTIONS.SETTINGS: {
 					this.uiStore.openModal(WORKFLOW_SETTINGS_MODAL_KEY);
+					break;
+				}
+				case WORKFLOW_MENU_ACTIONS.CREDENTIALS_REPLACE: {
+					this.uiStore.openModal(WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY);
 					break;
 				}
 				case WORKFLOW_MENU_ACTIONS.DELETE: {

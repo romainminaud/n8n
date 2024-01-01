@@ -38,6 +38,7 @@ import {
 	N8N_PRICING_PAGE_URL,
 	WORKFLOW_HISTORY_VERSION_RESTORE,
 	SUGGESTED_TEMPLATES_PREVIEW_MODAL_KEY,
+	WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY,
 } from '@/constants';
 import type {
 	CloudUpdateLinkSourceType,
@@ -184,6 +185,9 @@ export const useUIStore = defineStore(STORES.UI, {
 				open: false,
 			},
 			[SUGGESTED_TEMPLATES_PREVIEW_MODAL_KEY]: {
+				open: false,
+			},
+			[WORKFLOW_CREDENTIALS_REPLACE_MODAL_KEY]: {
 				open: false,
 			},
 		},
