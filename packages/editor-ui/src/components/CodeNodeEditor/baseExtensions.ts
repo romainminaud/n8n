@@ -44,6 +44,7 @@ export const writableEditorExtensions: readonly Extension[] = [
 		{ key: 'Tab', run: acceptCompletion },
 		{ key: 'Enter', run: acceptCompletion },
 		{ key: 'Mod-/', run: toggleComment },
+		{ key: 'Cmd-k', run: toggleComment },
 		{ key: 'Mod-z', run: undo },
 		{ key: 'Mod-Shift-z', run: redo },
 		{ key: 'Backspace', run: deleteCharBackward, shift: deleteCharBackward },
